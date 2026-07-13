@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}{% if product %}Editar{% else %}Nuevo{% endif %} Producto - Admin{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-4">
+                    <h3 class="fw-bold mb-4">
+                        {% if product %}✏️ Editar{% else %}➕ Nuevo{% endif %} Producto
+                    </h3>
+                    
+                    <form method="POST" enctype="multipart/form-data">
+                        {{ form.hidden_tag() }}
+                        
+                        <!-- Nombre -->
+                        <div class="mb-3">
+                            {{ form.name.label(class="form-label") }}
+                            {{ form.name(class="form-control", placeholder="Ej: Pod Luxury Gold 5000") }}
+                            {% for error in form.name.errors %}
+                            <div class="text-danger small">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                        
+                        <!-- Descripción -->
+                        <div class="mb-3">
+                            {{ form.description.label(class="form-label") }}
+                            {{ form.description(class="form-control", rows="3", placeholder="Descripción del producto...") }}
+                        </div>
+                        
+                        <!-- Precios (Compra y Venta) -->
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                {{ form.precio_compra.label(class="form-label") }}
+                                {{ form.precio_compra(class="form-control", placeholder="Ej: 45000") }}
+                                <small class="text-muted">💵 ¿Cuánto pagaste por el producto?</small>
+                                {% for error in form.precio_compra.errors %}
+                                <div class="text-danger small">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                {{ form.price.label(class="form-label") }}
+                                {{ form.price(class="form-control", placeholder="Ej: 65000") }}
+                                <small class="text-muted">💰 ¿A cuánto lo vendés?</small>
+                                {% for error in form.price.errors %}
+                                <div class="text-danger small">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        
+                        <!-- Stock y Categoría -->
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                {{ form.stock.label(class="form-label") }}
+                                {{ form.stock(class="form-control", placeholder="Ej: 100") }}
+                                <small class="text-muted">📦 Cantidad en stock</small>
+                                {% for error in form.stock.errors %}
+                                <div class="text-danger small">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                {{ form.category_id.label(class="form-label") }}
+                                {{ form.category_id(class="form-select") }}
+                                {% for error in form.category_id.errors %}
+                                <div class="text-danger small">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        
+                        <!-- Imagen -->
+                        <div class="mb-3">
+                            <label class="form-label">🖼️ Imagen del Producto</label>
+                            <input type="file" name="image" class="form-control" accept="image/*">
+                            {% if product and product.image_url %}
+                            <div class="mt-2">
+                                <img src="{{ url_for('static', filename=product.image_url) }}" 
+                                     alt="{{ product.name }}" 
+                                     class="img-thumbnail" 
+                                     style="max-height: 150px;">
+                                <p class="text-muted small mt-1">Imagen actual</p>
+                            </div>
+                            {% endif %}
+                        </div>
+                        
+                        <!-- Estadísticas del Producto (si ya existe) -->
+                        {% if product and product.precio_compra > 0 %}
+                        <div class="alert alert-info mb-3">
+                            <h6 class="fw-bold mb-2">📊 Estadísticas del Producto:</h6>
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <small>Ganancia por unidad:</small><br>
+                                    <strong class="text-success">GS {{ "{:,.0f}".format(product.ganancia_unitaria) }}</strong>
+                                </div>
+                                <div class="col-md-4">
+                                    <small>Margen de ganancia:</small><br>
+                                    <strong class="text-primary">{{ "%.1f"|format(product.margen_ganancia) }}%</strong>
+                                </div>
+                                <div class="col-md-4">
+                                    <small>Ganancia potencial (stock total):</small><br>
+                                    <strong class="text-warning">GS {{ "{:,.0f}".format(product.ganancia_potencial) }}</strong>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Botones -->
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-warning fw-semibold">
+                                {% if product %}🔄 Actualizar Producto{% else %}✅ Crear Producto{% endif %}
+                            </button>
+                            <a href="{{ url_for('admin.manage_products') }}" class="btn btn-outline-secondary">
+                                ❌ Cancelar
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Activar Suscripción - QuickGo{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card border-0 shadow-lg">
+                <div class="card-body text-center p-5">
+                    <div class="mb-4">
+                        <i class="bi bi-shield-lock" style="font-size: 3rem; color: #d4af37;"></i>
+                    </div>
+                    <h2 class="fw-bold mb-3">Suscripción Requerida</h2>
+                    <p class="text-muted mb-4">
+                        Tu negocio <strong>{{ current_user.business.name }}</strong> requiere una suscripción activa para operar.
+                        <br>Ingresá el código de activación que recibiste tras el pago.
+                    </p>
+                    
+                    <form method="POST" class="text-start">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Código de Activación</label>
+                            <input type="text" name="activation_code" class="form-control form-control-lg text-center fw-bold" 
+                                   placeholder="Ej: A1B2C3D4" required maxlength="8" style="letter-spacing: 3px;">
+                            <small class="text-muted d-block mt-2">⏳ Válido por 5 horas desde su generación</small>
+                        </div>
+                        <button type="submit" class="btn btn-warning w-100 btn-lg fw-bold">Activar Ahora</button>
+                    </form>
+                    
+                    <div class="mt-4 pt-3 border-top">
+                        <small class="text-muted">
+                            ¿No tenés código? Contactá al administrador de QuickGo para generar tu código de pago.
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

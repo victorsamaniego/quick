@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+{% block title %}Productos - QuickGo{% endblock %}
+
+{% block extra_css %}
+<style>
+    .location-banner {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 12px;
+        margin-bottom: 25px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    
+    .business-badge {
+        display: inline-block;
+        background: white;
+        color: #667eea;
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: bold;
+        margin: 5px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .no-businesses {
+        background: #fff3cd;
+        border: 2px solid #ffc107;
+        padding: 40px;
+        border-radius: 12px;
+        text-align: center;
+    }
+    
+    .product-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .product-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.15) !important;
+    }
+    
+    .business-name-badge {
+        background: #D4AF37;
+        color: white;
+        padding: 3px 10px;
+        border-radius: 15px;
+        font-size: 0.75rem;
+        display: inline-block;
+        margin-bottom: 8px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <!-- 🔥 BANNER DE UBICACIÓN -->
+    <div class="location-banner">
+        <div class="d-flex justify-content-between align-items-center flex-wrap">
+            <div class="mb-2 mb-md-0">
+                <h5 class="mb-1">📍 Tu ubicación actual</h5>
+                <p class="mb-0 small" id="locationText">
+                    {% if user_lat and user_lon %}
+                        Lat: {{ "%.4f"|format(user_lat) }}, Lon: {{ "%.4f"|format(user_lon) }}
+                    {% else %}
+                        Obteniendo ubicación...
+                    {% endif %}
+                </p>
+            </div>
+            <button id="updateLocationBtn" class="btn btn-light btn-sm">
+                <i class="bi bi-geo-alt"></i> Actualizar ubicación
+            </button>
+        </div>
+        
+        <!-- NEGOCIOS CERCANOS -->
+        {% if negocios_cercanos %}
+        <div class="mt-3">
+            <small class="d-block mb-2">
+                🏪 Negocios disponibles en tu zona ({{ negocios_cercanos|length }}):
+            </small>
+            {% for negocio_info in negocios_cercanos[:5] %}
+            <span class="business-badge">
+                {{ negocio_info.business.name }} - {{ negocio_info.distance }} km
+            </span>
+            {% endfor %}
+            {% if negocios_cercanos|length > 5 %}
+            <span class="business-badge">+{{ negocios_cercanos|length - 5 }} más</span>
+            {% endif %}
+        </div>
+        {% else %}
+        <div class="mt-3 alert alert-warning mb-0">
+            ⚠️ No hay negocios disponibles en tu zona. Actualizá tu ubicación.
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- HEADER DE PRODUCTOS -->
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap">
+        <h2 class="fw-bold mb-2 mb-md-0">🛍️ Productos Disponibles</h2>
+        <form class="d-flex" method="GET" action="{{ url_for('main.products') }}">
+            <input type="text" name="search" class="form-control me-2" 
+                   placeholder="Buscar producto..." value="{{ search_term or '' }}">
+            <button type="submit" class="btn btn-warning">
+                <i class="bi bi-search"></i>
+            </button>
+        </form>
+    </div>
+
+    <!-- PRODUCTOS -->
+    {% if products %}
+    <div class="row g-4">
+        {% for product in products %}
+        <div class="col-6 col-md-3">
+            <div class="card h-100 border-0 shadow-sm product-card">
+                {% if product.image_url %}
+                    {% if product.image_url.startswith('uploads/') %}
+                        <img src="{{ url_for('static', filename=product.image_url) }}" 
+                             class="card-img-top" alt="{{ product.name }}" 
+                             style="height: 200px; object-fit: cover;"
+                             onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Sin+Imagen';">
+                    {% else %}
+                        <img src="{{ url_for('static', filename='uploads/' + product.image_url) }}" 
+                             class="card-img-top" alt="{{ product.name }}" 
+                             style="height: 200px; object-fit: cover;"
+                             onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Sin+Imagen';">
+                    {% endif %}
+                {% else %}
+                    <div class="bg-light d-flex align-items-center justify-content-center" style="height: 200px;">
+                        <i class="bi bi-image text-muted fs-1"></i>
+                    </div>
+                {% endif %}
+                
+                <div class="card-body p-3">
+                    {% if product.business %}
+                    <span class="business-name-badge">
+                        🏪 {{ product.business.name }}
+                    </span>
+                    {% endif %}
+                    
+                    <h6 class="card-title fw-semibold mb-1 text-truncate">{{ product.name }}</h6>
+                    <p class="card-text text-warning fw-bold mb-2">
+                        GS {{ "{:,.0f}".format(product.price) }}
+                    </p>
+                    <p class="small text-muted mb-2">
+                        <i class="bi bi-box"></i> Stock: {{ product.stock }}
+                    </p>
+                    <form action="{{ url_for('main.add_to_cart', product_id=product.id) }}" method="POST">
+                        <button type="submit" class="btn btn-outline-warning w-100 btn-sm"
+                                {% if not product.is_available %}disabled{% endif %}>
+                            {% if product.is_available %}
+                                <i class="bi bi-cart-plus"></i> Agregar al carrito
+                            {% else %}
+                                <i class="bi bi-x-circle"></i> Sin stock
+                            {% endif %}
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="no-businesses">
+        <i class="bi bi-geo-alt fs-1 d-block mb-3"></i>
+        <h5>No hay productos disponibles en tu zona</h5>
+        <p class="text-muted">
+            Actualizá tu ubicación para ver productos de negocios cercanos.
+        </p>
+        <button id="getLocationBtn2" class="btn btn-warning">
+            <i class="bi bi-geo-alt"></i> Obtener mi ubicación
+        </button>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function getUserLocation() {
+    if (!navigator.geolocation) {
+        document.getElementById('locationText').textContent = '❌ Geolocalización no soportada';
+        return;
+    }
+    
+    document.getElementById('locationText').textContent = '📡 Obteniendo ubicación...';
+    
+    navigator.geolocation.getCurrentPosition(
+        function(position) {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+            
+            document.getElementById('locationText').textContent = 
+                `Lat: ${lat.toFixed(4)}, Lon: ${lon.toFixed(4)}`;
+            
+            updateLocationInSession(lat, lon);
+        },
+        function(error) {
+            console.error('Error:', error);
+            document.getElementById('locationText').textContent = 
+                '⚠️ No se pudo obtener la ubicación';
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+    );
+}
+
+function updateLocationInSession(lat, lon) {
+    fetch('/api/update-user-location', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            latitude: lat,
+            longitude: lon
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            console.log('✅ Ubicación actualizada');
+            console.log('🏪 Negocios cercanos:', data.negocios_count);
+            
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-success position-fixed top-0 end-0 m-3';
+            alert.style.zIndex = '9999';
+            alert.innerHTML = `
+                <strong>✅ Ubicación actualizada</strong><br>
+                🏪 ${data.negocios_count} negocios disponibles en tu zona
+            `;
+            document.body.appendChild(alert);
+            
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        }
+    })
+    .catch(err => {
+        console.error('Error:', err);
+    });
+}
+
+document.getElementById('updateLocationBtn').addEventListener('click', getUserLocation);
+document.getElementById('getLocationBtn2')?.addEventListener('click', getUserLocation);
+
+{% if not user_lat or user_lat == -25.2637 %}
+getUserLocation();
+{% endif %}
+</script>
+{% endblock %}

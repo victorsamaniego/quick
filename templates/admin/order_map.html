@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+{% block title %}Pedidos - Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="fw-bold mb-1">📦 Gestión de Pedidos</h2>
+            <p class="text-muted mb-0">Administrá y asigná los pedidos a delivery</p>
+        </div>
+    </div>
+
+    <!-- Filtros de Estado -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="btn-group" role="group">
+                <a href="{{ url_for('admin.manage_orders', status='all') }}" 
+                   class="btn btn-{{ 'warning' if current_status == 'all' else 'outline-secondary' }}">
+                    Todos
+                </a>
+                <a href="{{ url_for('admin.manage_orders', status='pending') }}" 
+                   class="btn btn-{{ 'warning' if current_status == 'pending' else 'outline-secondary' }}">
+                    Pendientes
+                </a>
+                <a href="{{ url_for('admin.manage_orders', status='shipped') }}" 
+                   class="btn btn-{{ 'warning' if current_status == 'shipped' else 'outline-secondary' }}">
+                    Enviados
+                </a>
+                <a href="{{ url_for('admin.manage_orders', status='delivered') }}" 
+                   class="btn btn-{{ 'warning' if current_status == 'delivered' else 'outline-secondary' }}">
+                    Entregados
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabla de Pedidos -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ID</th>
+                            <th>Cliente</th>
+                            <th>Total</th>
+                            <th>Estado</th>
+                            <th>Delivery Asignado</th>
+                            <th>Dirección</th>
+                            <th>Fecha</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for order in orders %}
+                        <tr>
+                            <td><strong>#{{ order.id }}</strong></td>
+                            <td>{{ order.customer.email }}</td>
+                            <td>GS {{ "{:,.0f}".format(order.total_amount) }}</td>
+                            <td>
+                                <span class="badge bg-{{ order.status_color }} px-3 py-2">
+                                    {{ order.status_label }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if order.driver %}
+                                    <span class="badge bg-info">
+                                        🛵 {{ order.driver.email }}
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-secondary">
+                                        ⚠️ Sin asignar
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <small>{{ order.shipping_address[:30] }}{% if order.shipping_address|length > 30 %}...{% endif %}</small>
+                            </td>
+                            <td>{{ order.created_at.strftime('%d/%m/%Y') }}</td>
+                            <td>
+                                <!-- Botón para ver detalles -->
+                                <button type="button" class="btn btn-sm btn-outline-primary" 
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#orderModal{{ order.id }}">
+                                    📄 Ver
+                                </button>
+                                
+                                <!-- Botón para actualizar estado -->
+                                {% if order.status != 'delivered' and order.status != 'cancelled' %}
+                                <button type="button" class="btn btn-sm btn-warning" 
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#updateModal{{ order.id }}">
+                                    🔄 Actualizar
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        
+                        <!-- Modal de Actualización de Estado -->
+                        <div class="modal fade" id="updateModal{{ order.id }}" tabindex="-1">
+                            <div class="modal-dialog">
+                                <div class="modal-content">
+                                    <form action="{{ url_for('admin.update_order_status', order_id=order.id) }}" method="POST">
+                                        <div class="modal-header bg-warning bg-opacity-10">
+                                            <h5 class="modal-title">🔄 Actualizar Pedido #{{ order.id }}</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                        </div>
+                                        <div class="modal-body">
+                                            <!-- Estado Actual -->
+                                            <div class="mb-3">
+                                                <label class="form-label">Estado Actual:</label>
+                                                <span class="badge bg-{{ order.status_color }} px-3 py-2">
+                                                    {{ order.status_label }}
+                                                </span>
+                                            </div>
+                                            
+                                            <!-- Nuevo Estado -->
+                                            <div class="mb-3">
+                                                <label class="form-label">Nuevo Estado:</label>
+                                                <select name="status" class="form-select" required>
+                                                    <option value="pending" {% if order.status == 'pending' %}selected{% endif %}>⏳ Pendiente</option>
+                                                    <option value="shipped" {% if order.status == 'shipped' %}selected{% endif %}>🚚 Enviado</option>
+                                                    <option value="delivered" {% if order.status == 'delivered' %}selected{% endif %}>✅ Entregado</option>
+                                                    <option value="cancelled" {% if order.status == 'cancelled' %}selected{% endif %}>❌ Cancelado</option>
+                                                </select>
+                                            </div>
+                                            
+                                            <!-- Selector de Delivery (solo si es Enviado) -->
+                                            <div class="mb-3" id="deliverySelector{{ order.id }}">
+                                                <label class="form-label">🛵 Asignar Delivery:</label>
+                                                <select name="delivery_driver_id" class="form-select">
+                                                    <option value="">-- Sin asignar --</option>
+                                                    {% for driver in delivery_users %}
+                                                    <option value="{{ driver.id }}" 
+                                                            {% if order.delivery_driver_id == driver.id %}selected{% endif %}>
+                                                        {{ driver.email }} - {{ driver.phone }}
+                                                    </option>
+                                                    {% endfor %}
+                                                </select>
+                                                <small class="text-muted">
+                                                    ⚠️ Solo disponible cuando el estado es "Enviado"
+                                                </small>
+                                            </div>
+                                            
+                                            <!-- Información del Cliente -->
+                                            <hr>
+                                            <h6 class="fw-bold">📋 Información del Cliente:</h6>
+                                            <p class="mb-1"><strong>👤 Email:</strong> {{ order.customer.email }}</p>
+                                            <p class="mb-1"><strong>📞 Teléfono:</strong> {{ order.shipping_phone }}</p>
+                                            <p class="mb-1"><strong>📍 Dirección:</strong> {{ order.shipping_address }}</p>
+                                            {% if order.shipping_reference %}
+                                            <p class="mb-0"><strong>ℹ️ Referencia:</strong> {{ order.shipping_reference }}</p>
+                                            {% endif %}
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                            <button type="submit" class="btn btn-warning">✅ Actualizar Pedido</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Modal de Detalles del Pedido -->
+                        <div class="modal fade" id="orderModal{{ order.id }}" tabindex="-1">
+                            <div class="modal-dialog modal-lg">
+                                <div class="modal-content">
+                                    <div class="modal-header bg-{{ order.status_color }} bg-opacity-10">
+                                        <h5 class="modal-title fw-bold">
+                                            📦 Pedido #{{ order.id }} - {{ order.status_label }}
+                                        </h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <p><strong>📅 Fecha:</strong> {{ order.created_at.strftime('%d/%m/%Y %H:%M') }}</p>
+                                                <p><strong>💰 Total:</strong> GS {{ "{:,.0f}".format(order.total_amount) }}</p>
+                                                {% if order.delivery_fee > 0 %}
+                                                <p><strong>🚚 Envío:</strong> GS {{ "{:,.0f}".format(order.delivery_fee) }}</p>
+                                                {% endif %}
+                                            </div>
+                                            <div class="col-md-6">
+                                                <p><strong>👤 Cliente:</strong> {{ order.customer.email }}</p>
+                                                <p><strong>📞 Teléfono:</strong> {{ order.shipping_phone }}</p>
+                                                {% if order.driver %}
+                                                <p><strong>🛵 Delivery:</strong> {{ order.driver.email }} ({{ order.driver.phone }})</p>
+                                                {% else %}
+                                                <p><strong>🛵 Delivery:</strong> <span class="text-muted">Sin asignar</span></p>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="alert alert-info">
+                                            <strong>📍 Dirección de Entrega:</strong><br>
+                                            {{ order.shipping_address }}
+                                            {% if order.shipping_reference %}
+                                            <br><strong>ℹ️ Referencia:</strong> {{ order.shipping_reference }}
+                                            {% endif %}
+                                        </div>
+                                        
+                                        <hr>
+                                        <h6 class="fw-bold mb-3">🛒 Productos del Pedido:</h6>
+                                        <div class="table-responsive">
+                                            <table class="table table-sm">
+                                                <thead class="table-light">
+                                                    <tr>
+                                                        <th>Producto</th>
+                                                        <th>Cantidad</th>
+                                                        <th>Precio Unit.</th>
+                                                        <th>Subtotal</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for item in order.order_items_list %}
+                                                    <tr>
+                                                        <td>{{ item.product_name }}</td>
+                                                        <td>x{{ item.quantity }}</td>
+                                                        <td>GS {{ "{:,.0f}".format(item.price) }}</td>
+                                                        <td><strong>GS {{ "{:,.0f}".format(item.subtotal) }}</strong></td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        
+                                        {% if order.status == 'delivered' %}
+                                        <div class="alert alert-success mt-3">
+                                            <i class="bi bi-check-circle"></i> <strong>Pedido Entregado:</strong> 
+                                            {{ order.delivered_at.strftime('%d/%m/%Y %H:%M') if order.delivered_at else 'N/A' }}
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    {% if not orders %}
+    <div class="alert alert-info text-center mt-4">
+        <i class="bi bi-info-circle fs-1 d-block mb-2"></i>
+        <h5>No hay pedidos en esta categoría</h5>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Script para mostrar/ocultar selector de delivery -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Para cada modal de actualización
+    document.querySelectorAll('[id^="updateModal"]').forEach(modal => {
+        modal.addEventListener('show.bs.modal', function(event) {
+            const modal = event.target;
+            const statusSelect = modal.querySelector('select[name="status"]');
+            const deliverySelector = modal.querySelector('[id^="deliverySelector"]');
+            
+            function toggleDeliverySelector() {
+                if (statusSelect.value === 'shipped') {
+                    deliverySelector.style.display = 'block';
+                } else {
+                    deliverySelector.style.display = 'none';
+                }
+            }
+            
+            // Ejecutar al abrir
+            toggleDeliverySelector();
+            
+            // Escuchar cambios
+            statusSelect.addEventListener('change', toggleDeliverySelector);
+        });
+    });
+});
+</script>
+{% endblock %}

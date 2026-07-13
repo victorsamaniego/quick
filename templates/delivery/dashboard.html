@@ -1,0 +1,548 @@
+{% extends "base.html" %}
+{% block title %}Panel de Delivery - QuickGo{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2 class="fw-bold mb-1">🛵 Panel de Delivery - QuickGo</h2>
+                    <p class="text-muted mb-0">
+                        {% if delivery_orders %}
+                            Tenés {{ delivery_orders|length }} pedido{{ 's' if delivery_orders|length > 1 else '' }} asignado{{ 's' if delivery_orders|length > 1 else '' }}
+                        {% else %}
+                            No tenés pedidos asignados actualmente
+                        {% endif %}
+                    </p>
+                </div>
+                <div class="text-end">
+                    <p class="mb-0 text-muted">👤 {{ current_user.email }}</p>
+                    <p class="mb-0 text-muted">📞 {{ current_user.phone }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resumen de Ganancias -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm bg-success text-white">
+                <div class="card-body text-center">
+                    <h6 class="card-title">💰 Ganancia Hoy</h6>
+                    <h2 class="fw-bold">GS {{ "{:,.0f}".format(today_earnings | default(0)) }}</h2>
+                    <small>{{ today_deliveries }} entregas</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm bg-info text-white">
+                <div class="card-body text-center">
+                    <h6 class="card-title">🌙 Ganancia Esta Noche</h6>
+                    <h2 class="fw-bold">GS {{ "{:,.0f}".format(night_earnings | default(0)) }}</h2>
+                    <small>{{ night_deliveries }} entregas</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm bg-warning text-dark">
+                <div class="card-body text-center">
+                    <h6 class="card-title">📊 Total Entregas</h6>
+                    <h2 class="fw-bold">{{ total_deliveries }}</h2>
+                    <small>{{ completed_orders }} completadas | {{ rejected_orders }} rechazadas</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pedidos Asignados (Activos) -->
+    {% if delivery_orders %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <h4 class="fw-bold mb-3">📦 Pedidos en Curso</h4>
+        </div>
+    </div>
+    
+    <div class="row g-4">
+        {% for order in delivery_orders %}
+        <div class="col-md-6 col-lg-4">
+            <div class="card border-0 shadow-sm h-100 {% if order.driver_arrived %}border-success{% endif %}">
+                <!-- Header con estado -->
+                <div class="card-header bg-{{ order.status_color }} bg-opacity-10 border-0 py-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="fw-bold mb-0">
+                            📦 Pedido #{{ order.id }}
+                        </h5>
+                        <span class="badge bg-{{ order.status_color }}">
+                            {{ order.status_label }}
+                        </span>
+                    </div>
+                </div>
+                
+                <div class="card-body">
+                    <!-- Información del Cliente -->
+                    <div class="mb-3">
+                        <h6 class="fw-bold mb-2">👤 Cliente:</h6>
+                        <p class="mb-1"><strong>Email:</strong> {{ order.customer.email }}</p>
+                        <p class="mb-1"><strong>Teléfono:</strong> {{ order.shipping_phone }}</p>
+                    </div>
+                    
+                    <!-- Dirección -->
+                    <div class="mb-3">
+                        <h6 class="fw-bold mb-2">📍 Dirección de Entrega:</h6>
+                        <p class="mb-1">{{ order.shipping_address }}</p>
+                        {% if order.shipping_reference %}
+                        <p class="mb-0 text-muted"><strong>ℹ️ Referencia:</strong> {{ order.shipping_reference }}</p>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Total del Pedido -->
+                    <div class="mb-3">
+                        <h6 class="fw-bold mb-2">💰 Total del Pedido:</h6>
+                        <p class="mb-0 text-warning fw-bold fs-5">GS {{ "{:,.0f}".format(order.total_amount) }}</p>
+                    </div>
+                    
+                    <!-- Estado de Llegada -->
+                    <div class="mb-3">
+                        {% if order.driver_arrived %}
+                        <div class="alert alert-success mb-0">
+                            <i class="bi bi-check-circle"></i> <strong>✅ Marcaste "Llegué"</strong><br>
+                            <small>Ahora podés contactar al cliente</small>
+                        </div>
+                        {% else %}
+                        <div class="alert alert-info mb-0">
+                            <i class="bi bi-info-circle"></i> <strong>Pendiente de llegada</strong><br>
+                            <small>Deslizá para confirmar que llegaste</small>
+                        </div>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Botones de Acción -->
+                    <div class="d-grid gap-2">
+                        <!-- Botón deslizable "LLEGUÉ" -->
+                        {% if not order.driver_arrived %}
+                        <div class="slide-button-container">
+                            <input type="checkbox" id="arrived_{{ order.id }}" class="slide-checkbox" 
+                                   onchange="markArrived({{ order.id }})">
+                            <label for="arrived_{{ order.id }}" class="slide-label">
+                                <span class="slide-text">👉 Deslizá para confirmar "LLEGUÉ"</span>
+                            </label>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Botones de Contacto (solo si llegó) -->
+                        {% if order.driver_arrived %}
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <a href="tel:{{ order.shipping_phone }}" class="btn btn-success w-100">
+                                    📞 Llamar
+                                </a>
+                            </div>
+                            <div class="col-6">
+                                <a href="https://wa.me/595{{ order.shipping_phone }}" target="_blank" 
+                                   class="btn btn-primary w-100">
+                                    💬 WhatsApp
+                                </a>
+                            </div>
+                        </div>
+                        
+                        <!-- ✅ NUEVO: Botón de Chat -->
+                        <div class="row g-2 mt-2">
+                            <div class="col-12">
+                                <a href="{{ url_for('main.order_chat', order_id=order.id) }}" 
+                                   class="btn btn-info w-100">
+                                    💬 Abrir Chat con Cliente y Negocio
+                                </a>
+                            </div>
+                        </div>
+                        
+                        <!-- Botones de Navegación -->
+                        <div class="row g-2 mt-2">
+                            <div class="col-6">
+                                {% if order.client_latitude and order.client_longitude %}
+                                    <a href="https://www.google.com/maps/dir/?api=1&destination={{ order.client_latitude }},{{ order.client_longitude }}" 
+                                       target="_blank" 
+                                       class="btn btn-outline-info w-100">
+                                        🗺️ Google Maps
+                                    </a>
+                                {% else %}
+                                    {% set search_address = ((order.shipping_address | default('')) + ' ' + (order.shipping_reference | default('')) + ', Paraguay') | urlencode %}
+                                    <a href="https://www.google.com/maps/search/?api=1&query={{ search_address }}" 
+                                       target="_blank" 
+                                       class="btn btn-outline-info w-100">
+                                        🗺️ Google Maps
+                                    </a>
+                                {% endif %}
+                            </div>
+                            <div class="col-6">
+                                {% if order.client_latitude and order.client_longitude %}
+                                    <a href="https://waze.com/ul?ll={{ order.client_latitude }},{{ order.client_longitude }}&navigate=yes" 
+                                       target="_blank" 
+                                       class="btn btn-outline-primary w-100">
+                                        🚗 Waze
+                                    </a>
+                                {% else %}
+                                    {% set search_address = ((order.shipping_address | default('')) + ' ' + (order.shipping_reference | default('')) + ', Paraguay') | urlencode %}
+                                    <a href="https://waze.com/ul?q={{ search_address }}&navigate=yes" 
+                                       target="_blank" 
+                                       class="btn btn-outline-primary w-100">
+                                        🚗 Waze
+                                    </a>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Marcar como Entregado -->
+                        {% if order.driver_arrived %}
+                        <form action="{{ url_for('delivery.mark_delivered', order_id=order.id) }}" method="POST">
+                            <button type="submit" class="btn btn-success w-100" 
+                                    onclick="return confirm('¿Confirmás que entregaste el pedido?')">
+                                ✅ Marcar como ENTREGADO
+                            </button>
+                        </form>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <!-- Footer con fecha -->
+                <div class="card-footer bg-white border-0">
+                    <small class="text-muted">
+                        📅 {{ order.created_at.strftime('%d/%m/%Y %H:%M') }}
+                    </small>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Historial de Pedidos (Entregados y Rechazados) -->
+    <div class="row mt-5">
+        <div class="col-12">
+            <h4 class="fw-bold mb-3">📋 Historial de Pedidos</h4>
+            
+            {% if all_delivery_orders %}
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Fecha</th>
+                                    <th>Cliente</th>
+                                    <th>Total</th>
+                                    <th>Estado</th>
+                                    <th>Ganancia</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for order in all_delivery_orders %}
+                                <tr>
+                                    <td><strong>#{{ order.id }}</strong></td>
+                                    <td>{{ order.delivered_at.strftime('%d/%m/%Y %H:%M') if order.delivered_at else order.updated_at.strftime('%d/%m/%Y %H:%M') }}</td>
+                                    <td>{{ order.customer.email }}</td>
+                                    <td>GS {{ "{:,.0f}".format(order.total_amount) }}</td>
+                                    <td>
+                                        {% if order.status == 'delivered' %}
+                                        <span class="badge bg-success">✅ Entregado</span>
+                                        {% elif order.status == 'cancelled' %}
+                                        <span class="badge bg-danger">❌ Rechazado</span>
+                                        {% else %}
+                                        <span class="badge bg-warning">⏳ {{ order.status_label }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if order.status == 'delivered' %}
+                                        <span class="text-success fw-bold">+ GS {{ "{:,.0f}".format(order.delivery_fee | default(0)) }}</span>
+                                        {% else %}
+                                        <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i> No tenés historial de pedidos aún
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Mapa de Ubicación -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header">
+                    <h5 class="fw-bold mb-0">🗺️ Tu Ubicación en Tiempo Real</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div id="deliveryMap" style="height: 400px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Estilos para botón deslizable -->
+<style>
+.slide-button-container {
+    position: relative;
+    width: 100%;
+    height: 60px;
+    background: #e9ecef;
+    border-radius: 30px;
+    overflow: hidden;
+}
+
+.slide-checkbox {
+    position: absolute;
+    opacity: 0;
+    width: 100%;
+    height: 100%;
+    cursor: pointer;
+    z-index: 2;
+}
+
+.slide-label {
+    position: absolute;
+    top: 5px;
+    left: 5px;
+    width: 50px;
+    height: 50px;
+    background: #28a745;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: left 0.3s;
+    z-index: 1;
+    cursor: pointer;
+}
+
+.slide-checkbox:checked + .slide-label {
+    left: calc(100% - 55px);
+}
+
+.slide-text {
+    position: absolute;
+    width: 100%;
+    text-align: center;
+    line-height: 60px;
+    color: #6c757d;
+    font-weight: bold;
+    user-select: none;
+}
+</style>
+
+<!-- Mapa Leaflet -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+// Inicializar mapa
+var map = L.map('deliveryMap').setView([-25.2637, -57.5759], 13);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap'
+}).addTo(map);
+
+// Icono del delivery
+var deliveryIcon = L.icon({
+    iconUrl: 'https://cdn-icons-png.flaticon.com/512/713/713338.png',
+    iconSize: [40, 40],
+    iconAnchor: [20, 20]
+});
+
+var deliveryMarker = L.marker([-25.2637, -57.5759], {icon: deliveryIcon}).addTo(map);
+
+// Actualizar ubicación en tiempo real
+function updateLocation() {
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(function(position) {
+            var lat = position.coords.latitude;
+            var lng = position.coords.longitude;
+            
+            // Mover marcador
+            deliveryMarker.setLatLng([lat, lng]);
+            map.setView([lat, lng], 15);
+            
+            // Enviar al servidor
+            fetch('/delivery/api/location/update', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    latitude: lat,
+                    longitude: lng
+                })
+            });
+        });
+    }
+}
+
+// Actualizar cada 5 segundos
+setInterval(updateLocation, 5000);
+updateLocation();
+
+// Marcar como "Llegué"
+function markArrived(orderId) {
+    fetch(`/delivery/api/arrived/${orderId}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('✅ ¡Cliente notificado! Ahora podés contactarlo.');
+            location.reload();
+        }
+    });
+}
+
+// ============================================
+// SOCKETIO PARA NOTIFICACIONES EN TIEMPO REAL
+// ============================================
+if (typeof window.socket !== 'undefined' && window.socket) {
+    console.log('🚚 Delivery dashboard - SocketIO conectado');
+    
+    // Unirse a la sala del delivery
+    window.socket.emit('join_delivery_room', { 
+        user_id: {{ current_user.id }} 
+    });
+    
+    console.log('🚚 Delivery {{ current_user.email }} unido a room: delivery_{{ current_user.id }}');
+    
+    // ✅ NUEVO: Unirse a las salas de chat de los pedidos asignados
+    {% for order in delivery_orders %}
+    window.socket.emit('join', { room: 'order_chat_{{ order.id }}' });
+    console.log('📡 Unido a sala de chat: order_chat_{{ order.id }}');
+    {% endfor %}
+    
+    // ✅ ESCUCHAR NUEVAS SOLICITUDES DE DELIVERY
+    window.socket.on('new_delivery_request', function(data) {
+        console.log('📦 ¡NUEVA SOLICITUD RECIBIDA!', data);
+        
+        playNotificationSound();
+        showNotification(data);
+        
+        if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('🚚 Nuevo Pedido - QuickGo', {
+                body: `Pedido #${data.order_id} - ${data.business_name} (${data.distance_km} km)`,
+                icon: '/static/icons/icon-192.png'
+            });
+        }
+        
+        setTimeout(() => {
+            location.reload();
+        }, 3000);
+    });
+    
+    // ✅ ESCUCHAR NUEVOS MENSAJES DE CHAT
+    window.socket.on('new_chat_message', function(data) {
+        console.log('💬 ¡NUEVO MENSAJE DE CHAT!', data);
+        showChatNotification(data);
+    });
+    
+} else {
+    console.error('❌ SocketIO no está disponible');
+}
+
+// Función para reproducir sonido de notificación
+function playNotificationSound() {
+    try {
+        const audio = new Audio('/static/audio/notification.mp3');
+        audio.volume = 0.5;
+        audio.play().catch(err => {
+            console.log('🔕 Sonido bloqueado por el navegador:', err);
+        });
+    } catch (e) {
+        console.log('No hay archivo de sonido disponible');
+    }
+}
+
+// Función para mostrar notificación visual
+function showNotification(data) {
+    const notification = document.createElement('div');
+    notification.className = 'alert alert-warning alert-dismissible fade show position-fixed top-0 end-0 m-3 shadow';
+    notification.style.zIndex = '9999';
+    notification.style.minWidth = '350px';
+    notification.innerHTML = `
+        <div class="d-flex align-items-center">
+            <div class="fs-1 me-3">🚚</div>
+            <div class="flex-grow-1">
+                <strong class="d-block">¡Nuevo Pedido Disponible!</strong>
+                <small class="text-muted">
+                    Pedido #${data.order_id}<br>
+                    📍 ${data.business_name}<br>
+                    📏 ${data.distance_km} km de distancia
+                </small>
+            </div>
+        </div>
+        <div class="mt-2 d-flex gap-2">
+            <a href="/delivery-requests" class="btn btn-sm btn-success">
+                ✅ Ver y Aceptar
+            </a>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="alert">
+                ✕ Cerrar
+            </button>
+        </div>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.remove();
+    }, 15000);
+}
+
+// ✅ NUEVA FUNCIÓN: Notificación de mensaje de chat
+function showChatNotification(data) {
+    const notification = document.createElement('div');
+    notification.className = 'alert alert-info alert-dismissible fade show position-fixed top-0 end-0 m-3 shadow';
+    notification.style.zIndex = '9999';
+    notification.style.minWidth = '350px';
+    notification.innerHTML = `
+        <div class="d-flex align-items-center">
+            <div class="fs-1 me-3">💬</div>
+            <div class="flex-grow-1">
+                <strong class="d-block">Nuevo Mensaje</strong>
+                <small class="text-muted">
+                    ${data.message.sender_name}: ${data.message.message}
+                </small>
+            </div>
+        </div>
+        <div class="mt-2">
+            <a href="/chat/order/${data.order_id}" class="btn btn-sm btn-info">
+                💬 Ver Chat
+            </a>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="alert">
+                ✕ Cerrar
+            </button>
+        </div>
+    `;
+    
+    document.body.appendChild(notification);
+    playNotificationSound();
+    
+    setTimeout(() => {
+        notification.remove();
+    }, 10000);
+}
+
+// Solicitar permiso para notificaciones del navegador al cargar
+document.addEventListener('DOMContentLoaded', function() {
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().then(permission => {
+            console.log('🔔 Permiso de notificación:', permission);
+        });
+    }
+});
+</script>
+{% endblock %}

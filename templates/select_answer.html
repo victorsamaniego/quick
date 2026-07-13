@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Confirmar Identidad - QuickGo{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card border-0 shadow-lg">
+                <div class="card-body p-5">
+                    <div class="text-center mb-4">
+                        <i class="bi bi-shield-check text-success" style="font-size: 4rem;"></i>
+                        <h3 class="fw-bold mt-3">¡Respuesta Correcta!</h3>
+                        <p class="text-muted">Usuario: <strong>{{ username }}</strong></p>
+                    </div>
+                    
+                    <div class="alert alert-success">
+                        <i class="bi bi-check-circle"></i> <strong>¡Excelente!</strong> Respondiste correctamente.
+                    </div>
+                    
+                    <div class="alert alert-warning">
+                        <h6 class="fw-bold">🔒 Última Verificación</h6>
+                        <p class="mb-2">Para mayor seguridad, confirmá tu respuesta escribiéndola nuevamente:</p>
+                        <p class="small mb-0"><strong>Pregunta:</strong> {{ question }}</p>
+                    </div>
+                    
+                    <form method="POST">
+                        <div class="mb-4">
+                            <label class="form-label fw-semibold">Confirmá tu respuesta</label>
+                            <input type="text" name="written_answer" class="form-control" 
+                                   placeholder="Escribí tu respuesta nuevamente" required autofocus>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-success w-100 fw-semibold py-2">
+                            <i class="bi bi-unlock"></i> Crear Nueva Contraseña
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

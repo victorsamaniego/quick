@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Soporte - Lista{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h2 class="fw-bold mb-4">💬 Soporte de Comerciantes</h2>
+    
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+            {% if negocios %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead><tr><th>Negocio</th><th>Mensajes</th><th>Sin leer</th><th>Acción</th></tr></thead>
+                    <tbody>
+                        {% for n in negocios %}
+                        <tr>
+                            <td><strong>{{ n[1] }}</strong></td>
+                            <td>{{ n[2] }}</td>
+                            <td>
+                                {% if n[3] and n[3] > 0 %}
+                                <span class="badge bg-danger">{{ n[3] }} nuevos</span>
+                                {% else %}
+                                <span class="text-muted">0</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{{ url_for('super_admin.soporte_admin', business_id=n[0]) }}" class="btn btn-sm btn-warning">
+                                    💬 Ver Chat
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted text-center py-4">No hay mensajes de soporte.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+{% block title %}Gestionar Productos - Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2 class="fw-bold mb-1">📦 Gestión de Productos</h2>
+                    <p class="text-muted mb-0">Administrá tu inventario de productos</p>
+                </div>
+                <a href="{{ url_for('admin.create_product') }}" class="btn btn-warning btn-lg">
+                    <i class="bi bi-plus-lg"></i> Nuevo Producto
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <input type="text" id="searchProduct" class="form-control" placeholder="🔍 Buscar producto por nombre...">
+                        </div>
+                        <div class="col-md-4">
+                            <select id="filterCategory" class="form-select">
+                                <option value="">Todas las categorías</option>
+                                {% for cat in categories %}
+                                <option value="{{ cat.name }}">{{ cat.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <select id="filterStock" class="form-select">
+                                <option value="">Todos los stocks</option>
+                                <option value="low">Bajo stock (< 10)</option>
+                                <option value="available">Disponibles</option>
+                                <option value="unavailable">Sin stock</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Productos en Grid -->
+    <div class="row g-4" id="productsGrid">
+        {% for product in products %}
+        <!-- ✅ Solo mostrar productos de ESTE negocio -->
+        {% if product.business_id == current_user.business_id %}
+        <div class="col-6 col-md-4 col-lg-3 product-card" 
+             data-name="{{ product.name|lower }}" 
+             data-category="{{ product.category.name|lower if product.category else '' }}" 
+             data-stock="{{ product.stock }}">
+            <div class="card h-100 border-0 shadow-sm product-card-admin">
+                <!-- Imagen del producto -->
+                <div class="position-relative">
+                    {% if product.image_url %}
+                        <img src="{{ url_for('static', filename=product.image_url) }}" 
+                             class="card-img-top" alt="{{ product.name }}" 
+                             style="height: 200px; object-fit: cover;">
+                    {% else %}
+                        <div class="bg-light d-flex align-items-center justify-content-center" style="height: 200px;">
+                            <i class="bi bi-image text-muted fs-1"></i>
+                        </div>
+                    {% endif %}
+                    
+                    <!-- Badge de estado -->
+                    <div class="position-absolute top-0 end-0 m-2">
+                        {% if product.is_available %}
+                            <span class="badge bg-success">✅ Disponible</span>
+                        {% else %}
+                            <span class="badge bg-danger">❌ Sin stock</span>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Badge de bajo stock -->
+                    {% if product.is_low_stock and product.stock > 0 %}
+                    <div class="position-absolute top-0 start-0 m-2">
+                        <span class="badge bg-warning text-dark">⚠️ Bajo stock</span>
+                    </div>
+                    {% endif %}
+                </div>
+                
+                <!-- Información del producto -->
+                <div class="card-body">
+                    <h6 class="card-title fw-semibold mb-2">{{ product.name }}</h6>
+                    
+                    <div class="mb-2">
+                        <small class="text-muted">💰 Precio:</small>
+                        <p class="mb-0 text-warning fw-bold">GS {{ "{:,.0f}".format(product.price) }}</p>
+                    </div>
+                    
+                    <div class="mb-2">
+                        <small class="text-muted">📦 Stock:</small>
+                        <p class="mb-0 {% if product.stock < 10 %}text-danger{% elif product.stock < 30 %}text-warning{% else %}text-success{% endif %} fw-bold">
+                            {{ product.stock }} unid.
+                        </p>
+                    </div>
+                    
+                    <div class="mb-2">
+                        <small class="text-muted">📂 Categoría:</small>
+                        <p class="mb-0 text-muted">{{ product.category.name if product.category else 'Sin categoría' }}</p>
+                    </div>
+                    
+                    {% if product.precio_compra > 0 %}
+                    <div class="mb-2">
+                        <small class="text-muted">📊 Ganancia:</small>
+                        <p class="mb-0 text-success fw-bold">
+                            GS {{ "{:,.0f}".format(product.ganancia_unitaria) }} 
+                            <small class="text-muted">({{ "%.0f"|format(product.margen_ganancia) }}%)</small>
+                        </p>
+                    </div>
+                    {% endif %}
+                </div>
+                
+                <!-- Acciones -->
+                <div class="card-footer bg-white border-0 pb-3">
+                    <div class="d-grid gap-2">
+                        <a href="{{ url_for('admin.edit_product', product_id=product.id) }}" 
+                           class="btn btn-outline-primary btn-sm">
+                            <i class="bi bi-pencil"></i> Editar
+                        </a>
+                        <button type="button" class="btn btn-outline-danger btn-sm" 
+                                data-bs-toggle="modal" 
+                                data-bs-target="#deleteModal{{ product.id }}">
+                            <i class="bi bi-trash"></i> Eliminar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Modal de Confirmación de Eliminación -->
+        <div class="modal fade" id="deleteModal{{ product.id }}" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header bg-danger bg-opacity-10">
+                        <h5 class="modal-title text-danger">🗑️ Eliminar Producto</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>¿Estás seguro de que querés eliminar <strong>{{ product.name }}</strong>?</p>
+                        <p class="text-muted small">Esta acción no se puede deshacer.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <form action="{{ url_for('admin.delete_product', product_id=product.id) }}" method="POST" class="d-inline">
+                            <button type="submit" class="btn btn-danger">Eliminar</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="col-12">
+            <div class="alert alert-info text-center">
+                <i class="bi bi-info-circle fs-1 d-block mb-2"></i>
+                <h5>No hay productos registrados</h5>
+                <p class="mb-3">Comenzá creando tu primer producto</p>
+                <a href="{{ url_for('admin.create_product') }}" class="btn btn-warning">
+                    <i class="bi bi-plus-lg"></i> Crear Primer Producto
+                </a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Resumen de estadísticas -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-md-3">
+                            <h3 class="text-primary fw-bold">{{ products|length }}</h3>
+                            <p class="text-muted mb-0">Total Productos</p>
+                        </div>
+                        <div class="col-md-3">
+                            <h3 class="text-success fw-bold">{{ products|selectattr('is_available')|list|length }}</h3>
+                            <p class="text-muted mb-0">Disponibles</p>
+                        </div>
+                        <div class="col-md-3">
+                            <h3 class="text-warning fw-bold">{{ products|selectattr('is_low_stock')|list|length }}</h3>
+                            <p class="text-muted mb-0">Bajo Stock</p>
+                        </div>
+                        <div class="col-md-3">
+                            <h3 class="text-danger fw-bold">{{ products|rejectattr('is_available')|list|length }}</h3>
+                            <p class="text-muted mb-0">Sin Stock</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Estilos personalizados -->
+<style>
+.product-card-admin {
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.product-card-admin:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+}
+
+.product-card-admin img {
+    border-top-left-radius: 0.5rem;
+    border-top-right-radius: 0.5rem;
+}
+</style>
+
+<!-- Script para filtros -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('searchProduct');
+    const categoryFilter = document.getElementById('filterCategory');
+    const stockFilter = document.getElementById('filterStock');
+    const productCards = document.querySelectorAll('.product-card');
+    
+    function filterProducts() {
+        const searchTerm = searchInput.value.toLowerCase();
+        const categoryValue = categoryFilter.value.toLowerCase();
+        const stockValue = stockFilter.value;
+        
+        productCards.forEach(card => {
+            const name = card.dataset.name;
+            const category = card.dataset.category;
+            const stock = parseInt(card.dataset.stock);
+            
+            let matchesSearch = !searchTerm || name.includes(searchTerm);
+            let matchesCategory = !categoryValue || category.includes(categoryValue);
+            let matchesStock = true;
+            
+            if (stockValue === 'low') {
+                matchesStock = stock < 10 && stock > 0;
+            } else if (stockValue === 'available') {
+                matchesStock = stock > 0;
+            } else if (stockValue === 'unavailable') {
+                matchesStock = stock === 0;
+            }
+            
+            if (matchesSearch && matchesCategory && matchesStock) {
+                card.style.display = 'block';
+            } else {
+                card.style.display = 'none';
+            }
+        });
+    }
+    
+    searchInput.addEventListener('input', filterProducts);
+    categoryFilter.addEventListener('change', filterProducts);
+    stockFilter.addEventListener('change', filterProducts);
+});
+</script>
+{% endblock %}

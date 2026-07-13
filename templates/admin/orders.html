@@ -1,0 +1,359 @@
+{% extends "base.html" %}
+{% block title %}Pedidos - Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="fw-bold mb-1">📦 Gestión de Pedidos</h2>
+            <p class="text-muted mb-0">Administrá y asigná los pedidos a delivery</p>
+        </div>
+    </div>
+
+    <!-- Filtros de Estado -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="btn-group flex-wrap" role="group">
+                <a href="{{ url_for('admin.manage_orders', status='all') }}" 
+                   class="btn btn-{{ 'warning' if current_status == 'all' else 'outline-secondary' }}">
+                    Todos
+                </a>
+                <a href="{{ url_for('admin.manage_orders', status='pending') }}" 
+                   class="btn btn-{{ 'warning' if current_status == 'pending' else 'outline-secondary' }}">
+                    Pendientes
+                </a>
+                <a href="{{ url_for('admin.manage_orders', status='shipped') }}" 
+                   class="btn btn-{{ 'warning' if current_status == 'shipped' else 'outline-secondary' }}">
+                    Enviados
+                </a>
+                <a href="{{ url_for('admin.manage_orders', status='delivered') }}" 
+                   class="btn btn-{{ 'warning' if current_status == 'delivered' else 'outline-secondary' }}">
+                    Entregados
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabla de Pedidos -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 table-orders">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ID</th>
+                            <th>Cliente</th>
+                            <th>Total</th>
+                            <th>Estado</th>
+                            <th>Método Pago</th>
+                            <th>Delivery</th>
+                            <th>Dirección</th>
+                            <th>Fecha</th>
+                            <th class="text-center">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for order in orders %}
+                        <tr>
+                            <td><strong>#{{ order.id }}</strong></td>
+                            <td><small>{{ order.customer.email }}</small></td>
+                            <td><strong>GS {{ "{:,.0f}".format(order.total_amount | default(0)) }}</strong></td>
+                            <td>
+                                <span class="badge bg-{{ order.status_color }} px-2 py-1">
+                                    {{ order.status_label }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if order.payment_method == 'cash' %}
+                                    <span class="badge bg-success">💵</span>
+                                    {% if order.needs_change %}
+                                        <br><small class="text-warning">⚠️ Cambio</small>
+                                    {% endif %}
+                                {% elif order.payment_method == 'transfer' %}
+                                    <span class="badge bg-info">🏦</span>
+                                    {% if order.payment_receipt_url %}
+                                        <br><a href="{{ url_for('static', filename=order.payment_receipt_url) }}" target="_blank" class="btn btn-sm btn-outline-dark mt-1">📄</a>
+                                    {% endif %}
+                                {% elif order.payment_method == 'qr' %}
+                                    <span class="badge bg-primary">📱</span>
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if order.driver %}
+                                    <small class="text-info">🛵 {{ order.driver.email.split('@')[0] }}</small>
+                                {% else %}
+                                    <small class="text-muted">Sin asignar</small>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <small title="{{ order.shipping_address }}">{{ order.shipping_address[:25] }}{% if order.shipping_address|length > 25 %}...{% endif %}</small>
+                            </td>
+                            <td><small>{{ order.created_at.strftime('%d/%m %H:%M') }}</small></td>
+                            <td class="text-center">
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" 
+                                            data-bs-toggle="modal" 
+                                            data-bs-target="#viewModal{{ order.id }}"
+                                            title="Ver detalles">
+                                        👁️
+                                    </button>
+                                    
+                                    <!-- 🔥 NUEVO BOTÓN: VER UBICACIÓN EN MAPA -->
+                                    {% if order.client_latitude and order.client_longitude %}
+                                    <a href="{{ url_for('admin.ver_ubicacion_pedido', order_id=order.id) }}" 
+                                       class="btn btn-info btn-sm" 
+                                       target="_blank"
+                                       title="Ver ubicación en mapa">
+                                        📍
+                                    </a>
+                                    {% else %}
+                                    <button class="btn btn-outline-secondary btn-sm" disabled title="Sin ubicación">
+                                        📍
+                                    </button>
+                                    {% endif %}
+                                    
+                                    {% if order.status == 'pending' and not order.driver %}
+                                    <a href="{{ url_for('admin.request_delivery', order_id=order.id) }}" 
+                                       class="btn btn-info btn-sm" 
+                                       title="Buscar delivery externo">
+                                        🚚
+                                    </a>
+                                    {% endif %}
+                                    
+                                    {% if order.status != 'delivered' and order.status != 'cancelled' %}
+                                    <button type="button" class="btn btn-warning btn-sm" 
+                                            data-bs-toggle="modal" 
+                                            data-bs-target="#updateModal{{ order.id }}"
+                                            title="Actualizar">
+                                        ✏️
+                                    </button>
+                                    {% endif %}
+                                    
+                                    {% if order.driver or order.delivery_driver_id %}
+                                    <a href="{{ url_for('main.order_chat', order_id=order.id) }}" 
+                                       class="btn btn-success btn-sm" 
+                                       title="Chat">
+                                        💬
+                                    </a>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    {% if not orders %}
+    <div class="alert alert-info text-center mt-4">
+        <i class="bi bi-info-circle fs-1 d-block mb-2"></i>
+        <h5>No hay pedidos en esta categoría</h5>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Modales -->
+{% for order in orders %}
+<!-- Modal Ver Detalles -->
+<div class="modal fade" id="viewModal{{ order.id }}" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-{{ order.status_color }} bg-opacity-10">
+                <h5 class="modal-title fw-bold">
+                    📦 Pedido #{{ order.id }} - {{ order.status_label }}
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <p><strong>📅 Fecha:</strong> {{ order.created_at.strftime('%d/%m/%Y %H:%M') }}</p>
+                        <p><strong>💰 Total:</strong> GS {{ "{:,.0f}".format(order.total_amount | default(0)) }}</p>
+                        {% if order.delivery_fee and order.delivery_fee > 0 %}
+                        <p><strong>🚚 Envío:</strong> GS {{ "{:,.0f}".format(order.delivery_fee) }}</p>
+                        {% endif %}
+                        <p><strong>💳 Pago:</strong> 
+                            {% if order.payment_method == 'cash' %}
+                                Efectivo {% if order.needs_change %}(con cambio){% endif %}
+                                {% if order.cash_bill_amount > 0 %} - Paga con Gs {{ "{:,.0f}".format(order.cash_bill_amount) }}{% endif %}
+                            {% elif order.payment_method == 'transfer' %}
+                                Transferencia {% if order.payment_receipt_url %}<a href="{{ url_for('static', filename=order.payment_receipt_url) }}" target="_blank" class="btn btn-sm btn-outline-dark ms-1">📄 Ver</a>{% endif %}
+                            {% elif order.payment_method == 'qr' %}
+                                QR
+                            {% endif %}
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>👤 Cliente:</strong> {{ order.customer.email }}</p>
+                        <p><strong>📞 Teléfono:</strong> {{ order.shipping_phone }}</p>
+                        {% if order.driver %}
+                        <p><strong>🛵 Delivery:</strong> {{ order.driver.email }} ({{ order.driver.phone }})</p>
+                        {% else %}
+                        <p><strong>🛵 Delivery:</strong> <span class="text-muted">Sin asignar</span></p>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="alert alert-info">
+                    <strong>📍 Dirección:</strong><br>
+                    {{ order.shipping_address }}
+                    {% if order.shipping_reference %}
+                    <br><strong>ℹ️ Referencia:</strong> {{ order.shipping_reference }}
+                    {% endif %}
+                </div>
+                
+                <!-- 🔥 NUEVO: Coordenadas del cliente -->
+                {% if order.client_latitude and order.client_longitude %}
+                <div class="alert alert-success">
+                    <strong>📍 Ubicación del Cliente:</strong><br>
+                    Lat: {{ order.client_latitude }} | Lon: {{ order.client_longitude }}<br>
+                    <a href="{{ url_for('admin.ver_ubicacion_pedido', order_id=order.id) }}" 
+                       class="btn btn-sm btn-success mt-2" target="_blank">
+                        🗺️ Ver en Mapa
+                    </a>
+                </div>
+                {% endif %}
+                
+                <hr>
+                <h6 class="fw-bold mb-3">🛒 Productos:</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Producto</th>
+                                <th>Cant.</th>
+                                <th>Precio</th>
+                                <th>Subtotal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in order.order_items_list %}
+                            <tr>
+                                <td>{{ item.product_name | default('Producto eliminado') }}</td>
+                                <td>x{{ item.quantity | default(1) }}</td>
+                                <td>GS {{ "{:,.0f}".format(item.price | default(0)) }}</td>
+                                <td><strong>GS {{ "{:,.0f}".format(item.subtotal | default(0)) }}</strong></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                {% if order.status == 'delivered' %}
+                <div class="alert alert-success mt-3">
+                    <i class="bi bi-check-circle"></i> <strong>Entregado:</strong> 
+                    {{ order.delivered_at.strftime('%d/%m/%Y %H:%M') if order.delivered_at else 'N/A' }}
+                </div>
+                {% endif %}
+            </div>
+            <div class="modal-footer">
+                {% if order.status != 'delivered' and order.status != 'cancelled' %}
+                <button type="button" class="btn btn-warning" 
+                        data-bs-dismiss="modal" 
+                        data-bs-toggle="modal" 
+                        data-bs-target="#updateModal{{ order.id }}">
+                    ✏️ Actualizar
+                </button>
+                {% endif %}
+                
+                {% if order.driver or order.delivery_driver_id %}
+                <a href="{{ url_for('main.order_chat', order_id=order.id) }}" class="btn btn-success">
+                    💬 Chat
+                </a>
+                {% endif %}
+                
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Actualizar -->
+{% if order.status != 'delivered' and order.status != 'cancelled' %}
+<div class="modal fade" id="updateModal{{ order.id }}" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form action="{{ url_for('admin.update_order_status', order_id=order.id) }}" method="POST">
+                <div class="modal-header bg-warning bg-opacity-10">
+                    <h5 class="modal-title fw-bold">🔄 Actualizar Pedido #{{ order.id }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Estado Actual:</label><br>
+                        <span class="badge bg-{{ order.status_color }} px-3 py-2">
+                            {{ order.status_label }}
+                        </span>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="statusSelect{{ order.id }}" class="form-label fw-bold">Nuevo Estado:</label>
+                        <select name="status" id="statusSelect{{ order.id }}" class="form-select" required onchange="toggleDeliverySelector({{ order.id }})">
+                            <option value="pending" {% if order.status == 'pending' %}selected{% endif %}>⏳ Pendiente</option>
+                            <option value="shipped" {% if order.status == 'shipped' %}selected{% endif %}>🚚 Enviado</option>
+                            <option value="delivered" {% if order.status == 'delivered' %}selected{% endif %}>✅ Entregado</option>
+                            <option value="cancelled" {% if order.status == 'cancelled' %}selected{% endif %}>❌ Cancelado</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3" id="deliverySelector{{ order.id }}" style="display: none;">
+                        <label for="deliverySelect{{ order.id }}" class="form-label fw-bold">🛵 Asignar Delivery:</label>
+                        <select name="delivery_driver_id" id="deliverySelect{{ order.id }}" class="form-select">
+                            <option value="">-- Sin asignar --</option>
+                            {% for driver in delivery_users %}
+                            <option value="{{ driver.id }}" 
+                                    {% if order.delivery_driver_id == driver.id %}selected{% endif %}>
+                                {{ driver.email }} - {{ driver.phone }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <hr>
+                    <h6 class="fw-bold mb-3">📋 Cliente:</h6>
+                    <p class="mb-1"><strong>👤 Email:</strong> {{ order.customer.email }}</p>
+                    <p class="mb-1"><strong>📞 Teléfono:</strong> {{ order.shipping_phone }}</p>
+                    <p class="mb-1"><strong>📍 Dirección:</strong> {{ order.shipping_address }}</p>
+                    {% if order.shipping_reference %}
+                    <p class="mb-0"><strong>ℹ️ Referencia:</strong> {{ order.shipping_reference }}</p>
+                    {% endif %}
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-warning">✅ Actualizar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endfor %}
+
+<script>
+function toggleDeliverySelector(orderId) {
+    const statusSelect = document.getElementById('statusSelect' + orderId);
+    const deliverySelector = document.getElementById('deliverySelector' + orderId);
+    
+    if (statusSelect && deliverySelector) {
+        if (statusSelect.value === 'shipped') {
+            deliverySelector.style.display = 'block';
+        } else {
+            deliverySelector.style.display = 'none';
+        }
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    {% for order in orders %}
+    {% if order.status != 'delivered' and order.status != 'cancelled' %}
+    toggleDeliverySelector({{ order.id }});
+    {% endif %}
+    {% endfor %}
+});
+</script>
+{% endblock %}

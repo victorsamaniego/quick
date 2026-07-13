@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Soporte - {{ business.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold">💬 Soporte - {{ business.name }}</h2>
+        <a href="{{ url_for('super_admin.soporte_lista') }}" class="btn btn-outline-secondary">← Volver</a>
+    </div>
+    
+    <div class="card border-0 shadow-sm">
+        <div class="card-body" style="height: 400px; overflow-y: auto;">
+            {% for msg in mensajes %}
+            <div class="mb-3 {{ 'text-end' if msg.is_from_admin else '' }}">
+                <div class="d-inline-block p-3 rounded {{ 'bg-primary text-white' if msg.is_from_admin else 'bg-light' }} border">
+                    <strong>{{ msg.sender.display_name }}</strong>
+                    <small class="{{ 'text-white-50' if msg.is_from_admin else 'text-muted' }} ms-2">{{ msg.created_at }}</small>
+                    <p class="mb-0 mt-1">{{ msg.message }}</p>
+                </div>
+            </div>
+            {% else %}
+            <p class="text-muted text-center">Sin mensajes.</p>
+            {% endfor %}
+        </div>
+        <div class="card-footer">
+            <form method="POST">
+                <div class="input-group">
+                    <input type="text" name="message" class="form-control" placeholder="Respondé al comerciante..." required>
+                    <button class="btn btn-primary" type="submit">📤 Enviar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

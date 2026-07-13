@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Chat Pedido #{{ order.id }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h2 class="fw-bold mb-4">💬 Chat - Pedido #{{ order.id }}</h2>
+    
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body" style="height: 400px; overflow-y: auto;">
+                    {% for msg in mensajes %}
+                    <div class="mb-3 {{ 'text-end' if msg.sender_id == current_user.id else '' }}">
+                        <div class="d-inline-block p-3 rounded {{ 'bg-warning' if msg.sender_id == current_user.id else 'bg-light' }} border">
+                            <strong>{{ msg.sender.display_name }}</strong>
+                            <small class="text-muted ms-2">{{ msg.created_at }}</small>
+                            <p class="mb-0 mt-1">{{ msg.message }}</p>
+                        </div>
+                    </div>
+                    {% else %}
+                    <p class="text-muted text-center">Sin mensajes aún.</p>
+                    {% endfor %}
+                </div>
+                <div class="card-footer">
+                    <form method="POST">
+                        <div class="input-group">
+                            <input type="text" name="message" class="form-control" placeholder="Escribí un mensaje..." required>
+                            <button class="btn btn-warning" type="submit">📤 Enviar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-body">
+                    <h6 class="fw-bold">📍 Ubicación del Negocio</h6>
+                    {% if negocio and negocio.latitude and negocio.longitude %}
+                    <p class="small mb-1"><strong>{{ negocio.name }}</strong></p>
+                    <p class="small text-muted mb-2">{{ negocio.address }}</p>
+                    <a href="https://www.google.com/maps/dir/?api=1&destination={{ negocio.latitude }},{{ negocio.longitude }}" 
+                       target="_blank" class="btn btn-sm btn-success w-100">
+                        🗺️ Abrir en Google Maps
+                    </a>
+                    {% else %}
+                    <p class="text-muted small">Ubicación no disponible</p>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h6 class="fw-bold">📋 Info del Pedido</h6>
+                    <p class="small mb-1"><strong>Cliente:</strong> {{ order.customer.display_name }}</p>
+                    <p class="small mb-1"><strong>Dirección:</strong> {{ order.shipping_address }}</p>
+                    <p class="small mb-1"><strong>Teléfono:</strong> {{ order.shipping_phone }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

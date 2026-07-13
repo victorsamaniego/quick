@@ -1,0 +1,439 @@
+{% extends "base.html" %}
+{% block title %}Confirmar Pedido - QuickGo{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+    #locationMap { height: 300px; border-radius: 12px; margin-bottom: 1rem; }
+    .location-box { background: #f8f9fa; padding: 1rem; border-radius: 8px; }
+    .delivery-fee { font-size: 1.25rem; font-weight: bold; color: #D4AF37; }
+    .payment-section { transition: all 0.3s ease; }
+    .payment-section.d-none { display: none !important; }
+    
+    .live-tracking-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: #d4edda;
+        color: #155724;
+        padding: 5px 12px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: bold;
+        margin-top: 10px;
+    }
+    
+    .live-tracking-badge::before {
+        content: '';
+        width: 8px;
+        height: 8px;
+        background: #28a745;
+        border-radius: 50%;
+        animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h2 class="fw-bold mb-4">📦 Confirmar Pedido</h2>
+    
+    {% set tiene_importacion = false %}
+    {% for item in cart_items %}
+        {% if item.product and item.product.category and item.product.category.name|upper == 'IMPORTACION' %}
+            {% set tiene_importacion = true %}
+        {% endif %}
+    {% endfor %}
+    
+    {% if tiene_importacion %}
+    <div class="alert alert-warning border-2 border-warning shadow-sm" role="alert">
+        <h5 class="alert-heading fw-bold">🚚 PEDIDO DE IMPORTACIÓN</h5>
+        <ul class="mb-0">
+            <li>💳 <strong>Pago Anticipado:</strong> Este pedido debe pagarse por Transferencia o QR.</li>
+            <li>📦 <strong>Seguimiento:</strong> Podrás ver el estado de tu pedido en tiempo real desde tu panel.</li>
+            <li>⏱️ <strong>Demora:</strong> Los pedidos de importación tienen un tiempo de gestión adicional.</li>
+        </ul>
+    </div>
+    {% endif %}
+    
+    <div class="row">
+        <div class="col-lg-8">
+            <!-- Mapa de Ubicación -->
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-body">
+                    <h5 class="fw-bold mb-3">📍 Tu Ubicación</h5>
+                    <div id="locationMap"></div>
+                    <small class="text-muted">
+                        <i class="bi bi-info-circle"></i> 
+                        Permite el acceso a tu ubicación para calcular el costo de envío
+                    </small>
+                    <button id="getLocationBtn" class="btn btn-outline-primary btn-sm mt-2">
+                        <i class="bi bi-geo-alt"></i> Obtener mi ubicación
+                    </button>
+                    
+                    <!-- 🔥 INDICADOR DE TRACKING EN VIVO -->
+                    <div id="liveTrackingBadge" class="live-tracking-badge" style="display: none;">
+                        📡 Compartiendo ubicación en tiempo real con el negocio
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Formulario de Envío -->
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-body">
+                    <h5 class="fw-bold mb-3">Datos de Envío</h5>
+                    <form method="POST" id="orderForm" enctype="multipart/form-data">
+                        {{ form.hidden_tag() }}
+                        <div class="mb-3">
+                            {{ form.shipping_address.label(class="form-label") }}
+                            {{ form.shipping_address(class="form-control", rows="3", id="shippingAddress") }}
+                            {% for error in form.shipping_address.errors %}
+                            <div class="text-danger small">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                        <div class="mb-3">
+                            {{ form.shipping_phone.label(class="form-label") }}
+                            {{ form.shipping_phone(class="form-control", id="shippingPhone") }}
+                            {% for error in form.shipping_phone.errors %}
+                            <div class="text-danger small">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                        <div class="mb-3">
+                            {{ form.shipping_reference.label(class="form-label") }}
+                            {{ form.shipping_reference(class="form-control", placeholder="Ej: Casa blanca, portón negro") }}
+                        </div>
+                        
+                        <!-- 💳 SECCIÓN MÉTODOS DE PAGO -->
+                        <div class="card border-0 shadow-sm mb-4">
+                            <div class="card-body">
+                                <h5 class="fw-bold mb-3">💳 Método de Pago</h5>
+                                
+                                <div class="btn-group w-100 mb-3" role="group">
+                                    {% if not tiene_importacion %}
+                                    <input type="radio" class="btn-check" name="payment_method" id="pay_cash" value="cash" checked onchange="togglePayment()">
+                                    <label class="btn btn-outline-success" for="pay_cash">🤑 Efectivo</label>
+                                    {% endif %}
+                                    
+                                    <input type="radio" class="btn-check" name="payment_method" id="pay_qr" value="qr" onchange="togglePayment()" {% if tiene_importacion %}checked{% endif %}>
+                                    <label class="btn btn-outline-primary" for="pay_qr">📱 QR</label>
+                                    
+                                    <input type="radio" class="btn-check" name="payment_method" id="pay_transfer" value="transfer" onchange="togglePayment()" {% if tiene_importacion %}checked{% endif %}>
+                                    <label class="btn btn-outline-info" for="pay_transfer">🏦 Transferencia</label>
+                                </div>
+
+                                {% if not tiene_importacion %}
+                                <div id="cash_fields" class="payment-section">
+                                    <div class="row g-2 align-items-center">
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-semibold">💵 ¿Con qué billete pagás?</label>
+                                            <select name="cash_bill_amount" class="form-select">
+                                                <option value="0">Pago Exacto</option>
+                                                <option value="1000">Gs. 1.000</option>
+                                                <option value="2000">Gs. 2.000</option>
+                                                <option value="5000">Gs. 5.000</option>
+                                                <option value="10000">Gs. 10.000</option>
+                                                <option value="20000">Gs. 20.000</option>
+                                                <option value="50000">Gs. 50.000</option>
+                                                <option value="100000">Gs. 100.000</option>
+                                                <option value="200000">Gs. 200.000</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="form-check mt-4">
+                                                <input class="form-check-input" type="checkbox" name="needs_change" id="needs_change">
+                                                <label class="form-check-label fw-semibold" for="needs_change">Necesito sencillo / cambio</label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endif %}
+
+                                <div id="transfer_fields" class="payment-section {% if not tiene_importacion %}d-none{% endif %}">
+                                    <div class="alert alert-warning small mb-2">
+                                        📥 Transferí a: <strong>0981-234-567</strong> (Banco Familiar / Tigo Money)<br>
+                                        📝 Referencia: Tu nombre + DNI
+                                    </div>
+                                    <label class="form-label small">📎 Subir comprobante (opcional)</label>
+                                    <input type="file" name="payment_receipt" class="form-control" accept="image/*,.pdf">
+                                </div>
+
+                                <div id="qr_fields" class="payment-section d-none text-center">
+                                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=QuickGoPayment" alt="QR Pago" class="img-fluid rounded" style="max-width: 200px;">
+                                    <p class="text-muted small mt-2 mb-0">Escaneá con tu billetera digital</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Costo de Envío -->
+                        <div class="location-box mb-3" id="deliveryFeeBox" style="display:none;">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span>🚚 Costo de envío:</span>
+                                <span class="delivery-fee" id="deliveryFeeValue">GS 0</span>
+                            </div>
+                            <small class="text-muted" id="distanceValue"></small>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-warning w-100 fw-semibold" id="confirmBtn" disabled>
+                            ✅ Confirmar Pedido
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-4">
+            <!-- Resumen del Pedido -->
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h5 class="fw-bold mb-3">Productos</h5>
+                    {% for item in cart_items %}
+                    <div class="d-flex justify-content-between mb-2 small">
+                        <span>{{ item.name }} x{{ item.quantity }}</span>
+                        <span>GS {{ "{:,.0f}".format(item.subtotal) }}</span>
+                    </div>
+                    {% endfor %}
+                    <hr>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Subtotal:</span>
+                        <span>GS {{ "{:,.0f}".format(total) }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2" id="deliveryFeeRow" style="display:none;">
+                        <span>Envío:</span>
+                        <span id="deliveryFeeSummary">GS 0</span>
+                    </div>
+                    <div class="d-flex justify-content-between fw-bold">
+                        <span>Total:</span>
+                        <span class="text-warning" id="totalValue">GS {{ "{:,.0f}".format(total) }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<input type="hidden" id="clientLatitude" name="client_latitude">
+<input type="hidden" id="clientLongitude" name="client_longitude">
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    let map, userMarker;
+    let userLocation = null;
+    let locationInterval = null;
+    
+    const defaultLat = -25.2637;
+    const defaultLon = -57.5759;
+    
+    function initMap(lat, lon) {
+        if (map) map.remove();
+        
+        map = L.map('locationMap').setView([lat, lon], 14);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+        
+        const userIcon = L.divIcon({
+            className: 'custom-marker',
+            html: '<div style="background:#D4AF37;color:white;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;">📍</div>',
+            iconSize: [30, 30]
+        });
+        
+        userMarker = L.marker([lat, lon], {icon: userIcon}).addTo(map)
+            .bindPopup('📍 Tu ubicación').openPopup();
+    }
+    
+    initMap(defaultLat, defaultLon);
+    
+    // 🔥 FUNCIÓN PARA ENVIAR UBICACIÓN AL SERVIDOR
+    function sendLocationToServer(lat, lon) {
+        fetch('/api/location/update', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                latitude: lat,
+                longitude: lon
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                console.log('✅ Ubicación guardada en sesión');
+            }
+        })
+        .catch(error => {
+            console.error('❌ Error guardando ubicación:', error);
+        });
+    }
+    
+    // 🔥 INICIAR COMPARTIR UBICACIÓN EN TIEMPO REAL
+    function startLiveTracking() {
+        if (locationInterval) clearInterval(locationInterval);
+        
+        // Mostrar badge de tracking
+        document.getElementById('liveTrackingBadge').style.display = 'inline-flex';
+        
+        // Enviar ubicación cada 15 segundos
+        locationInterval = setInterval(function() {
+            if (navigator.geolocation && userLocation) {
+                navigator.geolocation.getCurrentPosition(function(position) {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+                    
+                    userLocation = { latitude: lat, longitude: lon };
+                    
+                    // Actualizar marcador en el mapa
+                    if (userMarker) {
+                        userMarker.setLatLng([lat, lon]);
+                    }
+                    
+                    // Enviar al servidor
+                    sendLocationToServer(lat, lon);
+                    
+                    // Enviar vía SocketIO para tiempo real
+                    if (typeof window.socket !== 'undefined') {
+                        window.socket.emit('update_client_location', {
+                            latitude: lat,
+                            longitude: lon,
+                            timestamp: new Date().toISOString()
+                        });
+                    }
+                    
+                    console.log('📍 Ubicación actualizada:', lat, lon);
+                }, function(error) {
+                    console.error('Error obteniendo ubicación:', error);
+                }, {
+                    enableHighAccuracy: true,
+                    timeout: 10000
+                });
+            }
+        }, 15000); // Cada 15 segundos
+    }
+    
+    document.getElementById('getLocationBtn').addEventListener('click', function() {
+        if (!navigator.geolocation) {
+            alert('❌ Tu navegador no soporta geolocalización');
+            return;
+        }
+        
+        this.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Obteniendo...';
+        this.disabled = true;
+        
+        navigator.geolocation.getCurrentPosition(
+            function(position) {
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+                
+                userLocation = { latitude: lat, longitude: lon };
+                
+                initMap(lat, lon);
+                
+                document.getElementById('clientLatitude').value = lat;
+                document.getElementById('clientLongitude').value = lon;
+                
+                // Guardar en sesión
+                sendLocationToServer(lat, lon);
+                
+                calculateDeliveryFee(lat, lon);
+                
+                document.getElementById('confirmBtn').disabled = false;
+                
+                document.getElementById('getLocationBtn').innerHTML = '<i class="bi bi-geo-alt-fill"></i> Ubicación actualizada';
+                document.getElementById('getLocationBtn').classList.add('btn-success');
+                document.getElementById('getLocationBtn').classList.remove('btn-outline-primary');
+                
+                // 🔥 INICIAR TRACKING EN VIVO
+                startLiveTracking();
+                
+            },
+            function(error) {
+                console.error('Error de geolocalización:', error);
+                alert('⚠️ No se pudo obtener tu ubicación. Usando ubicación por defecto.');
+                
+                userLocation = { latitude: defaultLat, longitude: defaultLon };
+                document.getElementById('clientLatitude').value = defaultLat;
+                document.getElementById('clientLongitude').value = defaultLon;
+                calculateDeliveryFee(defaultLat, defaultLon);
+                document.getElementById('confirmBtn').disabled = false;
+                
+                document.getElementById('getLocationBtn').innerHTML = '<i class="bi bi-geo-alt"></i> Intentar de nuevo';
+                document.getElementById('getLocationBtn').disabled = false;
+            },
+            { enableHighAccuracy: true, timeout: 10000 }
+        );
+    });
+    
+    function calculateDeliveryFee(lat, lon) {
+        fetch('/api/location/calculate-delivery', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ latitude: lat, longitude: lon })
+        })
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById('deliveryFeeBox').style.display = 'block';
+            document.getElementById('deliveryFeeRow').style.display = 'flex';
+            
+            document.getElementById('deliveryFeeValue').textContent = data.fee_formatted;
+            document.getElementById('deliveryFeeSummary').textContent = data.fee_formatted;
+            
+            if (data.distance_km) {
+                document.getElementById('distanceValue').textContent = 
+                    `📏 Distancia estimada: ${data.distance_km} km`;
+            }
+            
+            const subtotal = {{ total }};
+            const totalWithDelivery = subtotal + data.delivery_fee;
+            document.getElementById('totalValue').textContent = 
+                `GS ${totalWithDelivery.toLocaleString('es-PY')}`;
+        })
+        .catch(err => {
+            console.error('Error calculando envío:', err);
+        });
+    }
+    
+    window.togglePayment = function() {
+        const cash = document.getElementById('pay_cash');
+        const transfer = document.getElementById('pay_transfer').checked;
+        const qr = document.getElementById('pay_qr').checked;
+        
+        const cashFields = document.getElementById('cash_fields');
+        if (cashFields) {
+            cashFields.classList.toggle('d-none', !cash || !cash.checked);
+        }
+        document.getElementById('transfer_fields').classList.toggle('d-none', !transfer);
+        document.getElementById('qr_fields').classList.toggle('d-none', !qr);
+    }
+    
+    {% if tiene_importacion %}
+    document.getElementById('pay_transfer').checked = true;
+    togglePayment();
+    {% else %}
+    document.getElementById('pay_cash').checked = true;
+    togglePayment();
+    {% endif %}
+    
+    document.getElementById('orderForm').addEventListener('submit', function(e) {
+        if (!userLocation) {
+            e.preventDefault();
+            alert('⚠️ Por favor, obtén tu ubicación antes de confirmar el pedido.');
+            document.getElementById('getLocationBtn').click();
+        }
+    });
+    
+    // 🔥 DETENER TRACKING AL SALIR DE LA PÁGINA
+    window.addEventListener('beforeunload', function() {
+        if (locationInterval) {
+            clearInterval(locationInterval);
+        }
+    });
+});
+</script>
+{% endblock %}

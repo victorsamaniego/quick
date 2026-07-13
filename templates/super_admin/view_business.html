@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block title %}{{ business.name }} - Detalles{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header del Negocio -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <div class="d-flex align-items-center gap-3">
+                {% if business.logo_url %}
+                    <img src="{{ url_for('static', filename=business.logo_url) }}" 
+                         style="width: 60px; height: 60px; object-fit: cover; border-radius: 12px;">
+                {% else %}
+                    <div class="bg-primary text-white d-flex align-items-center justify-content-center rounded-3" 
+                         style="width: 60px; height: 60px; font-size: 24px;">
+                        🏢
+                    </div>
+                {% endif %}
+                <div>
+                    <h1 class="fw-bold mb-0">{{ business.name }}</h1>
+                    <span class="text-muted">Slug: {{ business.slug }} | Teléfono: {{ business.phone or 'N/A' }}</span>
+                </div>
+            </div>
+        </div>
+        <div>
+            <a href="{{ url_for('super_admin.edit_business', business_id=business.id) }}" class="btn btn-warning me-2">
+                ✏️ Editar
+            </a>
+            <a href="{{ url_for('super_admin.manage_businesses') }}" class="btn btn-outline-secondary">
+                ← Volver
+            </a>
+        </div>
+    </div>
+
+    <!-- Estadísticas del Negocio -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm bg-success text-white">
+                <div class="card-body">
+                    <h6>💰 Revenue Total</h6>
+                    <h3 class="fw-bold">GS {{ "{:,.0f}".format(business_revenue) }}</h3>
+                    <small>Ventas entregadas</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm bg-primary text-white">
+                <div class="card-body">
+                    <h6>📦 Total Pedidos</h6>
+                    <h3 class="fw-bold">{{ business_orders }}</h3>
+                    <small>Todos los tiempos</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm bg-info text-white">
+                <div class="card-body">
+                    <h6>📦 Productos</h6>
+                    <h3 class="fw-bold">{{ business_products }}</h3>
+                    <small>Activos en catálogo</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm bg-warning text-dark">
+                <div class="card-body">
+                    <h6>👥 Clientes</h6>
+                    <h3 class="fw-bold">{{ business_customers }}</h3>
+                    <small>Clientes únicos</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Columna Izquierda: Pedidos Recientes -->
+        <div class="col-md-8 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="fw-bold mb-0">📋 Pedidos Recientes</h5>
+                    <span class="badge bg-secondary">{{ recent_orders|length }} pedidos</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Cliente</th>
+                                    <th>Total</th>
+                                    <th>Estado</th>
+                                    <th>Método Pago</th>
+                                    <th>Fecha</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for order in recent_orders %}
+                                <tr>
+                                    <td>#{{ order.id }}</td>
+                                    <td>{{ order.customer.email }}</td>
+                                    <td>GS {{ "{:,.0f}".format(order.total_amount) }}</td>
+                                    <td>
+                                        <span class="badge bg-{{ order.status_color }}">
+                                            {{ order.status_label }}
+                                        </span>
+                                    </td>
+                                    <!-- 💳 COLUMNA MÉTODO DE PAGO -->
+                                    <td>
+                                        {% if order.payment_method == 'cash' %}
+                                            <span class="badge bg-success">🤑 Efectivo</span>
+                                            {% if order.needs_change %}
+                                                <br><span class="badge bg-warning text-dark mt-1">⚠️ Cambio</span>
+                                            {% endif %}
+                                            {% if order.cash_bill_amount and order.cash_bill_amount > 0 %}
+                                                <br><small class="text-muted">Gs {{ "{:,.0f}".format(order.cash_bill_amount) }}</small>
+                                            {% endif %}
+                                        {% elif order.payment_method == 'transfer' %}
+                                            <span class="badge bg-info">🏦 Transferencia</span>
+                                            {% if order.payment_receipt_url %}
+                                                <br><a href="{{ url_for('static', filename=order.payment_receipt_url) }}" target="_blank" class="btn btn-xs btn-outline-dark mt-1">📄 Ver</a>
+                                            {% else %}
+                                                <br><small class="text-muted">Sin comp.</small>
+                                            {% endif %}
+                                        {% elif order.payment_method == 'qr' %}
+                                            <span class="badge bg-primary">📱 QR</span>
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ order.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted py-4">
+                                        No hay pedidos recientes para este negocio
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Columna Derecha: Productos y Deliverys -->
+        <div class="col-md-4">
+            <!-- Productos -->
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="fw-bold mb-0">🛍️ Productos</h5>
+                </div>
+                <div class="card-body p-0" style="max-height: 300px; overflow-y: auto;">
+                    <ul class="list-group list-group-flush">
+                        {% for product in products %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>{{ product.name }}</strong><br>
+                                <small class="text-muted">Stock: {{ product.stock }}</small>
+                            </div>
+                            <span class="text-success fw-bold">
+                                GS {{ "{:,.0f}".format(product.price) }}
+                            </span>
+                        </li>
+                        {% else %}
+                        <li class="list-group-item text-center text-muted">
+                            No hay productos
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Deliverys Asignados -->
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="fw-bold mb-0">🛵 Deliverys</h5>
+                </div>
+                <div class="card-body p-0">
+                    <ul class="list-group list-group-flush">
+                        {% for driver in delivery_drivers %}
+                        <li class="list-group-item">
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="bg-info text-white rounded-circle d-flex align-items-center justify-content-center" 
+                                     style="width: 35px; height: 35px;">
+                                    🛵
+                                </div>
+                                <div>
+                                    <strong>{{ driver.email }}</strong><br>
+                                    <small class="text-muted">{{ driver.phone }}</small>
+                                </div>
+                            </div>
+                        </li>
+                        {% else %}
+                        <li class="list-group-item text-center text-muted">
+                            Sin deliverys asignados
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

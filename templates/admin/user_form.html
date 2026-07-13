@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}{% if user %}Editar{% else %}Nuevo{% endif %} Usuario - Admin{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-4">
+                    <h3 class="fw-bold mb-4">
+                        {% if user %}✏️ Editar{% else %}➕ Nuevo{% endif %} Usuario
+                    </h3>
+                    <form method="POST">
+                        {{ form.hidden_tag() }}
+                        
+                        <!-- Email -->
+                        <div class="mb-3">
+                            {{ form.email.label(class="form-label") }}
+                            {{ form.email(class="form-control", placeholder="ej: delivery@podsluxury.com") }}
+                            {% for error in form.email.errors %}
+                            <div class="text-danger small">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                        
+                        <!-- Teléfono -->
+                        <div class="mb-3">
+                            {{ form.phone.label(class="form-label") }}
+                            {{ form.phone(class="form-control", placeholder="ej: 0981234567") }}
+                            {% for error in form.phone.errors %}
+                            <div class="text-danger small">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                        
+                        <!-- Contraseña (solo para nuevos usuarios) -->
+                        {% if not user %}
+                        <div class="mb-3">
+                            <label class="form-label">🔐 Contraseña</label>
+                            <input type="password" name="password" class="form-control" 
+                                   placeholder="ej: delivery123" required minlength="8">
+                            <small class="text-muted">Mínimo 8 caracteres</small>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Estado -->
+                        <div class="mb-3">
+                            {{ form.is_active.label(class="form-label") }}
+                            {{ form.is_active(class="form-select") }}
+                        </div>
+                        
+                        <!-- Rol: Admin -->
+                        <div class="mb-3">
+                            {{ form.is_admin.label(class="form-label") }}
+                            {{ form.is_admin(class="form-select") }}
+                            <small class="text-muted">⚠️ Los admins tienen acceso total al sistema</small>
+                        </div>
+                        
+                        <!-- ✅ Rol: Delivery Driver -->
+                        <div class="mb-4">
+                            <label class="form-label">🛵 ¿Es Delivery Driver?</label>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" 
+                                       name="is_delivery" id="is_delivery" 
+                                       value="true" 
+                                       {% if user and user.is_delivery %}checked{% endif %}>
+                                <label class="form-check-label" for="is_delivery">
+                                    Activar acceso al panel de delivery
+                                </label>
+                            </div>
+                            <small class="text-muted">
+                                📦 Los delivery drivers pueden:<br>
+                                • Ver pedidos asignados<br>
+                                • Actualizar su ubicación en tiempo real<br>
+                                • Marcar "Llegué" y "Entregado"<br>
+                                • Contactar al cliente
+                            </small>
+                        </div>
+                        
+                        <!-- Botones -->
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-warning fw-semibold">
+                                {% if user %}🔄 Actualizar Usuario{% else %}✅ Crear Usuario{% endif %}
+                            </button>
+                            <a href="{{ url_for('admin.manage_users') }}" class="btn btn-outline-secondary">
+                                ❌ Cancelar
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

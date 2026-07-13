@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Gestionar Usuarios - Super Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1 class="fw-bold">👥 Gestionar Usuarios</h1>
+            <p class="text-muted">Administra todos los usuarios del sistema</p>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Email</th>
+                                    <th>Teléfono</th>
+                                    <th>Negocio</th>
+                                    <th>Rol</th>
+                                    <th>Estado</th>
+                                    <th>Registro</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for user in users %}
+                                <tr>
+                                    <td>{{ user.id }}</td>
+                                    <td><strong>{{ user.email }}</strong></td>
+                                    <td>{{ user.phone }}</td>
+                                    <td>{{ user.business_name or '<span class="text-muted">-</span>' }}</td>
+                                    <td>
+                                        {% if user.is_super_admin %}
+                                        <span class="badge bg-danger">👑 Super Admin</span>
+                                        {% elif user.is_admin %}
+                                        <span class="badge bg-warning text-dark">👤 Admin</span>
+                                        {% elif user.is_delivery %}
+                                        <span class="badge bg-info">🛵 Delivery</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">👤 Cliente</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if user.is_active %}
+                                        <span class="badge bg-success">Activo</span>
+                                        {% else %}
+                                        <span class="badge bg-danger">Inactivo</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ user.created_at.strftime('%d/%m/%Y') }}</td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <!-- ✏️ EDITAR -->
+                                            <a href="{{ url_for('super_admin.edit_user', user_id=user.id) }}" 
+                                               class="btn btn-outline-primary" title="Editar Usuario">
+                                                ✏️
+                                            </a>
+                                            
+                                            <!-- 🔄 RESET PASSWORD -->
+                                            <form action="{{ url_for('super_admin.reset_user_password', user_id=user.id) }}" method="POST" style="display:inline;">
+                                                <button type="submit" class="btn btn-outline-warning" title="Resetear Contraseña"
+                                                        onclick="return confirm('¿Resetear contraseña de {{ user.email }}? Se generará una nueva temporal.')">
+                                                    🔄
+                                                </button>
+                                            </form>
+
+                                            <!-- 🗑️ ELIMINAR -->
+                                            <form action="{{ url_for('super_admin.delete_user', user_id=user.id) }}" method="POST" style="display:inline;"
+                                                  onsubmit="return confirm('⚠️ ¿Estás seguro de eliminar a este usuario? Esta acción no se puede deshacer.');">
+                                                <button type="submit" class="btn btn-outline-danger" title="Eliminar Usuario">
+                                                    🗑️
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="8" class="text-center text-muted py-4">No hay usuarios registrados</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 🔑 Modal para mostrar contraseña generada (Opcional) -->
+{% if new_password %}
+<div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title">Nueva Contraseña Generada</h5>
+            </div>
+            <div class="modal-body text-center">
+                <p class="mb-2">Contraseña temporal para <strong>{{ user_email }}</strong>:</p>
+                <div class="alert alert-warning mb-0">
+                    <h3 class="fw-bold">{{ new_password }}</h3>
+                </div>
+                <p class="text-muted small mt-2">Compártela con el usuario de forma segura.</p>
+            </div>
+            <div class="modal-footer justify-content-center">
+                <a href="{{ url_for('super_admin.manage_users') }}" class="btn btn-secondary">Cerrar</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

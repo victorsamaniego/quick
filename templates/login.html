@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Iniciar Sesión - QuickGo{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-5">
+            <div class="card border-0 shadow-lg">
+                <div class="card-body p-5">
+                    <h3 class="fw-bold text-center mb-4">👋 Iniciar Sesión</h3>
+                    
+                    <form method="POST">
+                        {{ form.hidden_tag() }}
+                        
+                        <!-- 🔥 USERNAME O EMAIL -->
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Usuario o Email</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-person-circle"></i></span>
+                                {{ form.username(class="form-control", placeholder="juan_perez123 o tu@email.com", autofocus=true) }}
+                            </div>
+                            <small class="text-muted">Podés usar tu nombre de usuario o email</small>
+                            {% for error in form.username.errors %}
+                            <div class="text-danger small">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                        
+                        <!-- CONTRASEÑA -->
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Contraseña</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-lock"></i></span>
+                                {{ form.password(class="form-control", placeholder="••••••••") }}
+                                <button type="button" class="btn btn-outline-secondary" id="togglePassword">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                            </div>
+                            {% for error in form.password.errors %}
+                            <div class="text-danger small">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                        
+                        <!-- RECORDAR -->
+                        <div class="mb-3 form-check">
+                            {{ form.remember_me(class="form-check-input") }}
+                            <label class="form-check-label" for="remember_me">Recordarme</label>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-warning w-100 fw-semibold py-2">
+                            <i class="bi bi-box-arrow-in-right"></i> Ingresar
+                        </button>
+                    </form>
+                    
+                    <hr class="my-4">
+                    
+                    <!-- 🔥 NUEVOS ENLACES -->
+                    <div class="text-center">
+                        <a href="{{ url_for('main.recover_account') }}" class="text-warning fw-semibold d-block mb-2">
+                            🔐 ¿Olvidaste tu contraseña? Recuperar mi entrada
+                        </a>
+                        <p class="text-muted small mb-0">
+                            ¿No tenés cuenta? <a href="{{ url_for('main.register') }}" class="fw-semibold">Registrate aquí</a>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('togglePassword').addEventListener('click', function() {
+    const passwordInput = document.getElementById('password');
+    const icon = this.querySelector('i');
+    
+    if (passwordInput.type === 'password') {
+        passwordInput.type = 'text';
+        icon.className = 'bi bi-eye-slash';
+    } else {
+        passwordInput.type = 'password';
+        icon.className = 'bi bi-eye';
+    }
+});
+</script>
+{% endblock %}

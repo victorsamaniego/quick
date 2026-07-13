@@ -1,0 +1,290 @@
+{% extends "base.html" %}
+{% block title %}Chat - Pedido #{{ order.id }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
+            <!-- Header del Chat -->
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-body p-3">
+                    <div class="d-flex align-items-center">
+                        <a href="{{ url_for('main.dashboard') }}" class="btn btn-link text-dark me-2">
+                            <i class="bi bi-arrow-left"></i>
+                        </a>
+                        <div class="flex-grow-1">
+                            <h6 class="fw-bold mb-0">💬 Chat - Pedido #{{ order.id }}</h6>
+                            <small class="text-muted">
+                                {% if order.business %}🏪 {{ order.business.name }}{% endif %}
+                            </small>
+                        </div>
+                        <span class="badge bg-{{ order.status_color }}">{{ order.status_label }}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Participantes -->
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-body p-3">
+                    <small class="text-muted d-block mb-2">Participantes:</small>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <span class="badge bg-info">👤 Cliente: {{ order.customer.email.split('@')[0] }}</span>
+                        {% if order.business %}
+                        <span class="badge bg-warning text-dark">🏪 Proveedor: {{ order.business.name }}</span>
+                        {% endif %}
+                        {% if order.driver %}
+                        <span class="badge bg-success">🛵 Delivery: {{ order.driver.email.split('@')[0] }}</span>
+                        {% else %}
+                        <span class="badge bg-secondary">🛵 Delivery: Sin asignar</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            
+            {% if order.status in ['delivered', 'cancelled'] %}
+            <div class="alert alert-secondary mb-3">
+                <i class="bi bi-info-circle"></i> <strong>Chat Cerrado</strong><br>
+                <small>Este pedido está finalizado. El chat está cerrado.</small>
+            </div>
+            {% endif %}
+            
+            <!-- Área de Mensajes -->
+            <div class="card border-0 shadow-sm" style="height: 500px;">
+                <div class="card-body p-0 d-flex flex-column">
+                    <div id="messagesContainer" class="flex-grow-1 p-3 overflow-auto" style="background-color: #f8f9fa;">
+                        {% if messages %}
+                            {% for msg in messages %}
+                            {# 🔥 CALCULAR ROL DIRECTAMENTE EN EL TEMPLATE 🔥 #}
+                            {% if msg.sender_id == order.user_id %}
+                                {% set role = 'customer' %}
+                                {% set role_icon = '👤' %}
+                                {% set role_name = 'Cliente' %}
+                                {% set role_badge = 'bg-info' %}
+                                {% set display_name = msg.sender.email.split('@')[0] %}
+                            {% elif order.delivery_driver_id and msg.sender_id == order.delivery_driver_id %}
+                                {% set role = 'delivery' %}
+                                {% set role_icon = '🛵' %}
+                                {% set role_name = 'Delivery' %}
+                                {% set role_badge = 'bg-success' %}
+                                {% set display_name = 'Delivery' %}
+                            {% elif msg.sender.business_id == order.business_id %}
+                                {% set role = 'business' %}
+                                {% set role_icon = '🏪' %}
+                                {% set role_name = 'Proveedor' %}
+                                {% set role_badge = 'bg-warning text-dark' %}
+                                {% set display_name = 'Proveedor' %}
+                            {% else %}
+                                {% set role = 'customer' %}
+                                {% set role_icon = '👤' %}
+                                {% set role_name = 'Cliente' %}
+                                {% set role_badge = 'bg-info' %}
+                                {% set display_name = msg.sender.email.split('@')[0] %}
+                            {% endif %}
+                            
+                            <div class="d-flex mb-3 {% if msg.sender_id == current_user.id %}justify-content-end{% endif %}">
+                                <div class="message-bubble {% if msg.sender_id == current_user.id %}bg-warning text-dark{% else %}bg-white{% endif %} rounded-3 p-3 shadow-sm" 
+                                     style="max-width: 75%; {% if msg.sender_id == current_user.id %}border-bottom-right-radius: 0 !important;{% else %}border-bottom-left-radius: 0 !important;{% endif %}">
+                                    <small class="text-muted d-block mb-1" style="font-size: 0.75rem;">
+                                        <strong>{{ display_name }}</strong> 
+                                        <span class="badge {{ role_badge }} badge-sm">{{ role_icon }} {{ role_name }}</span>
+                                        • <span class="message-time" data-utc="{{ msg.created_at.isoformat() }}Z">{{ msg.created_at.strftime('%H:%M') }}</span>
+                                    </small>
+                                    <p class="mb-0">{{ msg.message }}</p>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="text-center text-muted py-5">
+                                <i class="bi bi-chat-square-text fs-1 d-block mb-2"></i>
+                                <p>No hay mensajes aún</p>
+                                <small>¡Iniciá la conversación!</small>
+                            </div>
+                        {% endif %}
+                    </div>
+                    
+                    {% if order.status not in ['delivered', 'cancelled'] %}
+                    <div class="p-3 border-top bg-white">
+                        <form id="chatForm" class="d-flex gap-2">
+                            <input type="text" id="messageInput" class="form-control" placeholder="Escribí un mensaje..." autocomplete="off">
+                            <button type="submit" class="btn btn-warning"><i class="bi bi-send-fill"></i></button>
+                        </form>
+                    </div>
+                    {% else %}
+                    <div class="p-3 border-top bg-light text-center">
+                        <small class="text-muted"><i class="bi bi-lock"></i> Chat cerrado - Pedido {{ order.status_label }}</small>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const orderId = {{ order.id }};
+const currentUserId = {{ current_user.id }};
+const orderUserId = {{ order.user_id }};
+const orderDeliveryId = {{ order.delivery_driver_id or 'null' }};
+const orderBusinessId = {{ order.business_id }};
+const isChatClosed = {{ 'true' if order.status in ['delivered', 'cancelled'] else 'false' }};
+
+// 🔥 🔥 🔥 FUNCIÓN PARA CONVERTIR UTC A HORA LOCAL 🔥 🔥 🔥
+function convertUTCToLocal(utcString) {
+    if (!utcString) return '';
+    
+    try {
+        // Si no termina con Z o tiene timezone, agregar Z
+        if (!utcString.endsWith('Z') && !utcString.includes('+') && !utcString.includes('-', 10)) {
+            utcString += 'Z';
+        }
+        
+        // Crear fecha desde string UTC
+        const utcDate = new Date(utcString);
+        
+        // Obtener hora local del navegador
+        const hours = utcDate.getHours().toString().padStart(2, '0');
+        const minutes = utcDate.getMinutes().toString().padStart(2, '0');
+        
+        return `${hours}:${minutes}`;
+    } catch (e) {
+        console.error('Error convirtiendo hora:', e);
+        return '';
+    }
+}
+
+// 🔥 🔥 🔥 ACTUALIZAR TODAS LAS HORAS AL CARGAR 🔥 🔥 🔥
+function updateAllTimes() {
+    const timeElements = document.querySelectorAll('.message-time');
+    
+    timeElements.forEach(element => {
+        const utcTime = element.getAttribute('data-utc');
+        if (utcTime) {
+            const localTime = convertUTCToLocal(utcTime);
+            if (localTime) {
+                element.textContent = localTime;
+            }
+        }
+    });
+}
+
+function scrollToBottom() {
+    const container = document.getElementById('messagesContainer');
+    if (container) container.scrollTop = container.scrollHeight;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const chatForm = document.getElementById('chatForm');
+    const messageInput = document.getElementById('messageInput');
+    
+    if (chatForm && messageInput && !isChatClosed) {
+        chatForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const message = messageInput.value.trim();
+            if (!message) return;
+            
+            messageInput.disabled = true;
+            
+            fetch(`/api/chat/order/${orderId}/send`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ message: message })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    messageInput.value = '';
+                    messageInput.disabled = false;
+                    scrollToBottom();
+                    // Actualizar horas después de agregar mensaje
+                    setTimeout(updateAllTimes, 100);
+                } else {
+                    alert('Error: ' + (data.error || 'No se pudo enviar'));
+                    messageInput.disabled = false;
+                }
+            })
+            .catch(err => {
+                alert('Error de conexión');
+                messageInput.disabled = false;
+            });
+        });
+    }
+    
+    scrollToBottom();
+    // 🔥 Actualizar horas al cargar la página
+    updateAllTimes();
+});
+
+if (typeof window.socket !== 'undefined' && window.socket && !isChatClosed) {
+    const room = `order_chat_${orderId}`;
+    window.socket.emit('join', { room: room });
+    
+    window.socket.on('new_chat_message', function(data) {
+        if (data.order_id === orderId) {
+            addMessageToChat(data.message);
+            scrollToBottom();
+        }
+    });
+}
+
+// 🔥 FUNCIÓN QUE CALCULA EL ROL EN TIEMPO REAL 🔥
+function addMessageToChat(msg) {
+    const container = document.getElementById('messagesContainer');
+    if (!container) return;
+    
+    const isOwnMessage = msg.sender_id === currentUserId;
+    
+    // 🔥 CALCULAR ROL DINÁMICAMENTE 🔥
+    let display_name = '';
+    let role_icon = '';
+    let role_name = '';
+    let role_badge = '';
+    
+    if (msg.sender_id === orderUserId) {
+        // 👤 CLIENTE
+        display_name = msg.sender_name;
+        role_icon = '👤';
+        role_name = 'Cliente';
+        role_badge = 'bg-info';
+    } else if (orderDeliveryId && msg.sender_id === orderDeliveryId) {
+        // 🛵 DELIVERY
+        display_name = 'Delivery';
+        role_icon = '🛵';
+        role_name = 'Delivery';
+        role_badge = 'bg-success';
+    } else {
+        // 🏪 PROVEEDOR
+        display_name = 'Proveedor';
+        role_icon = '🏪';
+        role_name = 'Proveedor';
+        role_badge = 'bg-warning text-dark';
+    }
+    
+    // 🔥 CONVERTIR HORA A ZONA LOCAL 🔥
+    let display_time = msg.created_at;
+    if (msg.created_at_utc) {
+        const converted = convertUTCToLocal(msg.created_at_utc);
+        if (converted) display_time = converted;
+    }
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `d-flex mb-3 ${isOwnMessage ? 'justify-content-end' : ''}`;
+    
+    const bubbleClass = isOwnMessage ? 'bg-warning text-dark' : 'bg-white';
+    const borderRadius = isOwnMessage ? 'border-bottom-right-radius: 0 !important;' : 'border-bottom-left-radius: 0 !important;';
+    
+    messageDiv.innerHTML = `
+        <div class="message-bubble ${bubbleClass} rounded-3 p-3 shadow-sm" 
+             style="max-width: 75%; ${borderRadius}">
+            <small class="text-muted d-block mb-1" style="font-size: 0.75rem;">
+                <strong>${display_name}</strong> 
+                <span class="badge ${role_badge} badge-sm">${role_icon} ${role_name}</span>
+                • ${display_time}
+            </small>
+            <p class="mb-0">${msg.message}</p>
+        </div>
+    `;
+    
+    container.appendChild(messageDiv);
+}
+</script>
+{% endblock %}

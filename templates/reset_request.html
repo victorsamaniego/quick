@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Recuperar Contraseña{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-5">
+            <div class="card border-0 shadow-lg">
+                <div class="card-body p-5">
+                    <h3 class="fw-bold text-center mb-4">🔄 Recuperar Contraseña</h3>
+                    <form method="POST">
+                        {{ form.hidden_tag() }}
+                        <div class="mb-3">{{ form.email.label(class="form-label") }}{{ form.email(class="form-control", placeholder="tu@email.com") }}</div>
+                        <button type="submit" class="btn btn-warning w-100 fw-semibold">Enviar Código</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

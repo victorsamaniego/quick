@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Solicitar Delivery - Pedido #{{ order.id }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-warning bg-opacity-10 py-3">
+                    <h4 class="fw-bold mb-0">
+                        🚚 Solicitar Delivery Externo
+                    </h4>
+                </div>
+                <div class="card-body p-4">
+                    <div class="alert alert-info">
+                        <strong>📦 Pedido #{{ order.id }}</strong><br>
+                        <strong>💰 Total:</strong> GS {{ "{:,.0f}".format(order.total_amount) }}<br>
+                        <strong>📍 Dirección:</strong> {{ order.shipping_address }}
+                    </div>
+                    
+                    <form method="POST">
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">
+                                📡 Radio de búsqueda:
+                            </label>
+                            <div class="btn-group w-100" role="group">
+                                <input type="radio" class="btn-check" name="radius" 
+                                       id="radius2" value="2" checked>
+                                <label class="btn btn-outline-primary" for="radius2">
+                                    2 km
+                                </label>
+                                
+                                <input type="radio" class="btn-check" name="radius" 
+                                       id="radius5" value="5">
+                                <label class="btn btn-outline-primary" for="radius5">
+                                    5 km
+                                </label>
+                                
+                                <input type="radio" class="btn-check" name="radius" 
+                                       id="radius7" value="7">
+                                <label class="btn btn-outline-primary" for="radius7">
+                                    7 km
+                                </label>
+                            </div>
+                            <small class="text-muted d-block mt-2">
+                                Se notificará a los deliverys disponibles en el radio seleccionado
+                            </small>
+                        </div>
+                        
+                        <div class="alert alert-warning">
+                            <i class="bi bi-info-circle"></i> 
+                            <strong>Importante:</strong>
+                            <ul class="mb-0 mt-2">
+                                <li>Los deliverys tendrán <strong>2 minutos</strong> para aceptar</li>
+                                <li>Si uno rechaza, se notifica al siguiente más cercano</li>
+                                <li>Si expira, se busca automáticamente más deliverys</li>
+                                <li>Recibirás una notificación cuando alguien acepte</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-warning btn-lg">
+                                📢 Buscar y Notificar Deliverys
+                            </button>
+                            <a href="{{ url_for('admin.manage_orders') }}" 
+                               class="btn btn-outline-secondary">
+                                Cancelar
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+{% block title %}Ubicación del Pedido #{{ order.id }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+    #map {
+        height: 600px;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    
+    .info-panel {
+        background: white;
+        padding: 20px;
+        border-radius: 12px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .delivery-fee-editor {
+        background: #fff8e1;
+        padding: 15px;
+        border-radius: 8px;
+        border-left: 4px solid #D4AF37;
+    }
+    
+    .live-indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: #d4edda;
+        color: #155724;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-weight: bold;
+    }
+    
+    .live-indicator::before {
+        content: '';
+        width: 10px;
+        height: 10px;
+        background: #28a745;
+        border-radius: 50%;
+        animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+    
+    .btn-group-custom {
+        display: flex;
+        gap: 10px;
+        margin-top: 15px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2 class="fw-bold mb-1">
+                        📍 Ubicación del Pedido #{{ order.id }}
+                    </h2>
+                    <p class="text-muted mb-0">
+                        Cliente: <strong>{{ order.customer.username or order.customer.email.split('@')[0] }}</strong>
+                    </p>
+                </div>
+                <div class="live-indicator">
+                    🔴 EN VIVO
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row">
+        <!-- Panel de Información -->
+        <div class="col-md-4">
+            <!-- Info del Pedido -->
+            <div class="info-panel">
+                <h5 class="fw-bold mb-3">📋 Detalles del Pedido</h5>
+                <p><strong>Cliente:</strong> {{ order.customer.username or order.customer.email.split('@')[0] }}</p>
+                <p><strong>Teléfono:</strong> {{ order.shipping_phone }}</p>
+                <p><strong>Dirección:</strong> {{ order.shipping_address }}</p>
+                {% if order.shipping_reference %}
+                <p><strong>Referencia:</strong> {{ order.shipping_reference }}</p>
+                {% endif %}
+                <p><strong>Estado:</strong> <span class="badge bg-{{ order.status_color }}">{{ order.status_label }}</span></p>
+                <p><strong>Total:</strong> GS {{ "{:,.0f}".format(order.total_amount) }}</p>
+            </div>
+            
+            <!-- Editor de Costo de Delivery -->
+            <div class="info-panel delivery-fee-editor">
+                <h5 class="fw-bold mb-3">🚚 Costo de Delivery</h5>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Costo Actual:</label>
+                    <div class="input-group">
+                        <span class="input-group-text">Gs</span>
+                        <input type="number" id="deliveryFeeInput" class="form-control" 
+                               value="{{ order.delivery_fee or 10000 }}" 
+                               step="1000" min="0">
+                    </div>
+                    <small class="text-muted">Default: 10.000 Gs</small>
+                </div>
+                
+                <div class="btn-group-custom">
+                    <button type="button" class="btn btn-warning w-100" id="updateFeeBtn">
+                        <i class="bi bi-check-circle"></i> Actualizar
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" id="resetFeeBtn">
+                        <i class="bi bi-arrow-counterclockwise"></i> Reset
+                    </button>
+                </div>
+                
+                <div id="feeUpdateMessage" class="mt-2"></div>
+            </div>
+            
+            <!-- Acciones -->
+            <div class="info-panel">
+                <h5 class="fw-bold mb-3">⚡ Acciones</h5>
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('admin.manage_orders') }}" class="btn btn-outline-primary">
+                        <i class="bi bi-arrow-left"></i> Volver a Pedidos
+                    </a>
+                    {% if order.status == 'pending' %}
+                    <a href="{{ url_for('admin.request_delivery', order_id=order.id) }}" class="btn btn-success">
+                        <i class="bi bi-person-plus"></i> Asignar Delivery
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Mapa -->
+        <div class="col-md-8">
+            <div id="map"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+const orderId = {{ order.id }};
+const clientLat = {{ order.client_latitude or 'null' }};
+const clientLon = {{ order.client_longitude or 'null' }};
+const businessLat = -25.2637;  // Coordenadas del negocio (ajustar)
+const businessLon = -57.5759;
+
+// Inicializar mapa
+const map = L.map('map').setView([clientLat || businessLat, clientLon || businessLon], 13);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+}).addTo(map);
+
+// Marcador del cliente
+let clientMarker = null;
+if (clientLat && clientLon) {
+    const clientIcon = L.divIcon({
+        className: 'client-marker',
+        html: '<div style="background:#28a745;color:white;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);">👤</div>',
+        iconSize: [40, 40]
+    });
+    
+    clientMarker = L.marker([clientLat, clientLon], {icon: clientIcon}).addTo(map)
+        .bindPopup('📍 <strong>Cliente</strong><br>{{ order.customer.username or order.customer.email.split("@")[0] }}')
+        .openPopup();
+}
+
+// Marcador del negocio
+const businessIcon = L.divIcon({
+    className: 'business-marker',
+    html: '<div style="background:#D4AF37;color:white;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);">🏪</div>',
+    iconSize: [40, 40]
+});
+
+const businessMarker = L.marker([businessLat, businessLon], {icon: businessIcon}).addTo(map)
+    .bindPopup('🏪 <strong>Negocio</strong><br>{{ current_user.business.name }}');
+
+// Dibujar línea entre negocio y cliente
+if (clientLat && clientLon) {
+    const latlngs = [
+        [businessLat, businessLon],
+        [clientLat, clientLon]
+    ];
+    const polyline = L.polyline(latlngs, {
+        color: '#D4AF37',
+        weight: 3,
+        opacity: 0.7,
+        dashArray: '10, 10'
+    }).addTo(map);
+    
+    // Ajustar zoom para mostrar ambos puntos
+    map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
+}
+
+// 🔥 ACTUALIZAR COSTO DE DELIVERY
+document.getElementById('updateFeeBtn').addEventListener('click', function() {
+    const newFee = parseFloat(document.getElementById('deliveryFeeInput').value);
+    
+    if (newFee < 0) {
+        alert('El costo no puede ser negativo');
+        return;
+    }
+    
+    fetch(`/admin/pedido/${orderId}/actualizar-delivery`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ delivery_fee: newFee })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showMessage('✅ Costo actualizado correctamente', 'success');
+        } else {
+            showMessage('❌ Error al actualizar: ' + (data.error || 'Error desconocido'), 'danger');
+        }
+    })
+    .catch(err => {
+        showMessage('❌ Error de conexión', 'danger');
+        console.error('Error:', err);
+    });
+});
+
+// Reset a 10,000
+document.getElementById('resetFeeBtn').addEventListener('click', function() {
+    document.getElementById('deliveryFeeInput').value = 10000;
+});
+
+function showMessage(message, type) {
+    const div = document.getElementById('feeUpdateMessage');
+    div.className = `alert alert-${type} mt-2 mb-0`;
+    div.textContent = message;
+    setTimeout(() => div.remove(), 3000);
+}
+
+// 🔥 SOCKETIO - ACTUALIZACIONES EN TIEMPO REAL
+if (typeof window.socket !== 'undefined') {
+    // Unirse a la room del pedido
+    window.socket.emit('join', { room: `order_${orderId}` });
+    
+    // Escuchar actualizaciones de ubicación
+    window.socket.on('client_location_update', function(data) {
+        if (data.order_id === orderId) {
+            console.log('📍 Nueva ubicación del cliente:', data);
+            
+            // Actualizar marcador
+            if (clientMarker) {
+                clientMarker.setLatLng([data.latitude, data.longitude]);
+                map.setView([data.latitude, data.longitude], 15);
+            } else {
+                const clientIcon = L.divIcon({
+                    className: 'client-marker',
+                    html: '<div style="background:#28a745;color:white;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);">👤</div>',
+                    iconSize: [40, 40]
+                });
+                
+                clientMarker = L.marker([data.latitude, data.longitude], {icon: clientIcon}).addTo(map)
+                    .bindPopup('📍 <strong>Cliente</strong><br>Actualizado: ' + new Date().toLocaleTimeString())
+                    .openPopup();
+            }
+        }
+    });
+    
+    // Escuchar actualización de delivery fee
+    window.socket.on('delivery_fee_updated', function(data) {
+        if (data.order_id === orderId) {
+            document.getElementById('deliveryFeeInput').value = data.new_fee;
+            showMessage('💰 Costo de delivery actualizado', 'info');
+        }
+    });
+}
+
+// 🔥 ACTUALIZACIÓN AUTOMÁTICA CADA 30 SEGUNDOS
+setInterval(function() {
+    fetch(`/admin/api/pedido/${orderId}/datos`)
+        .then(response => response.json())
+        .then(data => {
+            console.log('🔄 Datos actualizados:', data);
+            
+            // Actualizar marcador si cambió la ubicación
+            if (data.client_lat && data.client_lon && clientMarker) {
+                const currentLatLng = clientMarker.getLatLng();
+                if (currentLatLng.lat !== data.client_lat || currentLatLng.lng !== data.client_lon) {
+                    clientMarker.setLatLng([data.client_lat, data.client_lon]);
+                }
+            }
+        })
+        .catch(err => console.error('Error al actualizar:', err));
+}, 30000);  // Cada 30 segundos
+</script>
+{% endblock %}

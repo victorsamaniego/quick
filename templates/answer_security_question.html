@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Pregunta de Seguridad - QuickGo{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card border-0 shadow-lg">
+                <div class="card-body p-5">
+                    <div class="text-center mb-4">
+                        <i class="bi bi-patch-question text-warning" style="font-size: 4rem;"></i>
+                        <h3 class="fw-bold mt-3">Pregunta de Seguridad</h3>
+                        <p class="text-muted">Usuario: <strong>{{ username }}</strong></p>
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <h5 class="fw-bold mb-0">{{ question }}</h5>
+                    </div>
+                    
+                    <form method="POST">
+                        <div class="mb-4">
+                            <label class="form-label fw-semibold">Tu respuesta</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-key"></i></span>
+                                <input type="text" name="answer" class="form-control" 
+                                       placeholder="Escribí tu respuesta" required autofocus>
+                            </div>
+                            <small class="text-muted">No importa mayúsculas/minúsculas</small>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-warning w-100 fw-semibold py-2">
+                            <i class="bi bi-check-circle"></i> Verificar Respuesta
+                        </button>
+                    </form>
+                    
+                    <hr class="my-4">
+                    <div class="text-center">
+                        <a href="{{ url_for('main.recover_account') }}" class="text-muted">
+                            <i class="bi bi-arrow-left"></i> Volver
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

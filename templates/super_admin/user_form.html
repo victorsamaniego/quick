@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Editar Usuario - Super Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1 class="fw-bold">✏️ Editar Usuario</h1>
+            <p class="text-muted">Modifica roles, datos y asignación de negocio</p>
+        </div>
+    </div>
+
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <form method="POST">
+                        <!-- Datos Básicos -->
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Email *</label>
+                                <input type="email" name="email" class="form-control" value="{{ user.email }}" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Teléfono</label>
+                                <input type="text" name="phone" class="form-control" value="{{ user.phone }}">
+                            </div>
+                        </div>
+
+                        <!-- Asignación de Negocio -->
+                        <div class="mb-4">
+                            <label class="form-label fw-semibold">Asignar a Negocio</label>
+                            <select name="business_id" class="form-select">
+                                <option value="">-- Sin Negocio (Cliente General o Super Admin) --</option>
+                                {% for biz in businesses %}
+                                    <option value="{{ biz.id }}" {% if user.business_id == biz.id %}selected{% endif %}>
+                                        {{ biz.name }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                            <small class="text-muted">Si el usuario es admin de un negocio, selecciónalo aquí.</small>
+                        </div>
+
+                        <!-- Roles y Permisos (Switches) -->
+                        <div class="card bg-light border-0 mb-4">
+                            <div class="card-body">
+                                <h6 class="fw-bold mb-3">🛡️ Roles y Permisos</h6>
+                                
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" name="is_admin" id="is_admin" {% if user.is_admin %}checked{% endif %}>
+                                            <label class="form-check-label fw-bold" for="is_admin">👤 Admin de Negocio</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" name="is_delivery" id="is_delivery" {% if user.is_delivery %}checked{% endif %}>
+                                            <label class="form-check-label fw-bold" for="is_delivery">🛵 Delivery</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" name="is_super_admin" id="is_super_admin" {% if user.is_super_admin %}checked{% endif %}>
+                                            <label class="form-check-label text-danger fw-bold" for="is_super_admin">👑 Super Admin</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" name="is_active" id="is_active" {% if user.is_active %}checked{% endif %}>
+                                            <label class="form-check-label fw-bold" for="is_active">✅ Cuenta Activa</label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-between">
+                            <a href="{{ url_for('super_admin.manage_users') }}" class="btn btn-outline-secondary">Cancelar</a>
+                            <button type="submit" class="btn btn-primary px-4">💾 Guardar Cambios</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

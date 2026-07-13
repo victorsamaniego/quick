@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% block title %}Pedido #{{ order.id }} - Detalle{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>#map { height: 250px; border-radius: 12px; }</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-12">
+            <a href="{{ url_for('delivery.dashboard') }}" class="btn btn-outline-secondary mb-3">
+                ← Volver al Panel
+            </a>
+            <h2 class="fw-bold">📦 Pedido #{{ order.id }}</h2>
+            <span class="badge bg-{{ order.status_color }} fs-6">{{ order.status_label }}</span>
+        </div>
+    </div>
+    
+    <div class="row">
+        <!-- Información del Negocio (Retiro) -->
+        <div class="col-md-6 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0">🏪 Negocio (Retiro)</h5>
+                </div>
+                <div class="card-body">
+                    {% if order.business %}
+                    <p><strong>{{ order.business.name }}</strong></p>
+                    <p class="text-muted">{{ order.business.address }}</p>
+                    <p><strong>Teléfono:</strong> {{ order.business.phone }}</p>
+                    
+                    {% if order.business.latitude and order.business.longitude %}
+                    <div id="map" class="mb-3"></div>
+                    <a href="https://www.google.com/maps/dir/?api=1&destination={{ order.business.latitude }},{{ order.business.longitude }}" 
+                       target="_blank" class="btn btn-success w-100">
+                        🗺️ Navegar al Negocio
+                    </a>
+                    {% endif %}
+                    {% else %}
+                    <p class="text-muted">Información del negocio no disponible</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Información del Cliente (Entrega) -->
+        <div class="col-md-6 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">👤 Cliente (Entrega)</h5>
+                </div>
+                <div class="card-body">
+                    <p><strong>Email:</strong> {{ order.customer.email }}</p>
+                    <p><strong>Teléfono:</strong> {{ order.shipping_phone }}</p>
+                    <hr>
+                    <h6 class="fw-bold">📍 Dirección de Entrega:</h6>
+                    <p>{{ order.shipping_address }}</p>
+                    {% if order.shipping_reference %}
+                    <p class="text-muted"><strong>Referencia:</strong> {{ order.shipping_reference }}</p>
+                    {% endif %}
+                    
+                    <div class="row g-2 mt-3">
+                        <div class="col-6">
+                            <a href="tel:{{ order.shipping_phone }}" class="btn btn-success w-100">📞 Llamar</a>
+                        </div>
+                        <div class="col-6">
+                            <a href="https://wa.me/595{{ order.shipping_phone }}" target="_blank" class="btn btn-primary w-100">💬 WhatsApp</a>
+                        </div>
+                    </div>
+                    
+                    <div class="row g-2 mt-2">
+                        <div class="col-6">
+                            {% if order.client_latitude and order.client_longitude %}
+                            <a href="https://www.google.com/maps/dir/?api=1&destination={{ order.client_latitude }},{{ order.client_longitude }}" target="_blank" class="btn btn-outline-info w-100">🗺️ Google Maps</a>
+                            {% else %}
+                            <a href="https://www.google.com/maps/search/?api=1&query={{ order.shipping_address | urlencode }}" target="_blank" class="btn btn-outline-info w-100">🗺️ Google Maps</a>
+                            {% endif %}
+                        </div>
+                        <div class="col-6">
+                            {% if order.client_latitude and order.client_longitude %}
+                            <a href="https://waze.com/ul?ll={{ order.client_latitude }},{{ order.client_longitude }}&navigate=yes" target="_blank" class="btn btn-outline-primary w-100">🚗 Waze</a>
+                            {% else %}
+                            <a href="https://waze.com/ul?q={{ order.shipping_address | urlencode }}&navigate=yes" target="_blank" class="btn btn-outline-primary w-100">🚗 Waze</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Chat con el Negocio -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="fw-bold mb-0"> Chat con el Negocio</h5>
+                            <small class="text-muted">Comunicate directamente con el comercio</small>
+                        </div>
+                        <a href="{{ url_for('main.chat_delivery_negocio', order_id=order.id) }}" class="btn btn-warning btn-lg">
+                            💬 Abrir Chat
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Productos del Pedido -->
+    <div class="row">
+        <div class="col-md-8 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">🛒 Productos</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Producto</th>
+                                    <th>Cant.</th>
+                                    <th>Precio</th>
+                                    <th>Subtotal</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in order.order_items_list %}
+                                <tr>
+                                    <td>{{ item.product_name }}</td>
+                                    <td>x{{ item.quantity }}</td>
+                                    <td>GS {{ "{:,.0f}".format(item.price) }}</td>
+                                    <td><strong>GS {{ "{:,.0f}".format(item.subtotal) }}</strong></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <hr>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Subtotal:</span>
+                        <span>GS {{ "{:,.0f}".format(order.total_amount - order.delivery_fee) }}</span>
+                    </div>
+                    {% if order.delivery_fee and order.delivery_fee > 0 %}
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Envío:</span>
+                        <span>GS {{ "{:,.0f}".format(order.delivery_fee) }}</span>
+                    </div>
+                    {% endif %}
+                    <div class="d-flex justify-content-between fw-bold fs-5">
+                        <span>Total:</span>
+                        <span class="text-warning">GS {{ "{:,.0f}".format(order.total_amount) }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Ganancia y Acciones -->
+        <div class="col-md-4 mb-4">
+            <div class="card border-0 shadow-sm bg-success bg-opacity-10 mb-3">
+                <div class="card-body text-center">
+                    <h6 class="fw-bold">💰 Tu Ganancia</h6>
+                    <h2 class="text-success mb-0">GS {{ "{:,.0f}".format(order.delivery_fee | default(0)) }}</h2>
+                </div>
+            </div>
+            
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h5 class="fw-bold mb-3">⚡ Acciones</h5>
+                    {% if order.status == 'shipped' and not order.driver_arrived %}
+                    <div class="alert alert-info">
+                        <strong>📍 Deslizá el botón "LLEGUÉ" en el panel principal</strong>
+                    </div>
+                    {% elif order.status == 'shipped' and order.driver_arrived %}
+                    <form action="{{ url_for('delivery.mark_delivered', order_id=order.id) }}" method="POST">
+                        <button type="submit" class="btn btn-success btn-lg w-100" onclick="return confirm('¿Confirmás que entregaste el pedido?')">
+                            ✅ Marcar como ENTREGADO
+                        </button>
+                    </form>
+                    {% elif order.status == 'delivered' %}
+                    <div class="alert alert-success mb-0">
+                        <i class="bi bi-check-circle"></i> <strong>Pedido entregado</strong> el {{ order.delivered_at.strftime('%d/%m/%Y a las %H:%M') if order.delivered_at else 'N/A' }}
+                    </div>
+                    {% elif order.status == 'cancelled' %}
+                    <div class="alert alert-danger mb-0">
+                        <i class="bi bi-x-circle"></i> <strong>Pedido cancelado</strong>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if order.business and order.business.latitude and order.business.longitude %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const map = L.map('map').setView([{{ order.business.latitude }}, {{ order.business.longitude }}], 15);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+L.marker([{{ order.business.latitude }}, {{ order.business.longitude }}])
+    .addTo(map)
+    .bindPopup('🏪 {{ order.business.name }}')
+    .openPopup();
+</script>
+{% endif %}
+{% endblock %}

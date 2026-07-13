@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Analytics - Super Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1 class="fw-bold">📊 Analytics Global</h1>
+            <p class="text-muted">Estadísticas avanzadas de la plataforma</p>
+        </div>
+    </div>
+
+    <!-- Revenue por Negocio -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="fw-bold mb-0">💰 Revenue por Negocio (Últimos 30 días)</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Negocio</th>
+                                    <th>Revenue</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for name, revenue in revenue_by_business %}
+                                <tr>
+                                    <td><strong>{{ name }}</strong></td>
+                                    <td>GS {{ "{:,.0f}".format(revenue) }}</td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="2" class="text-center text-muted">
+                                        No hay datos disponibles
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pedidos por Día -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="fw-bold mb-0">📦 Pedidos por Día (Últimos 7 días)</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Cantidad de Pedidos</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for date, count in orders_by_day %}
+                                <tr>
+                                    <td>{{ date }}</td>
+                                    <td><strong>{{ count }}</strong></td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="2" class="text-center text-muted">
+                                        No hay datos disponibles
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Productos Más Vendidos -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="fw-bold mb-0">🏆 Productos Más Vendidos</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Producto</th>
+                                    <th>Negocio</th>
+                                    <th>Vendidos</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for name, business_name, sold in top_products %}
+                                <tr>
+                                    <td><strong>{{ name }}</strong></td>
+                                    <td>{{ business_name }}</td>
+                                    <td><span class="badge bg-success">{{ sold }}</span></td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="3" class="text-center text-muted">
+                                        No hay datos disponibles
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,537 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard - Pods Luxury{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stat-card { transition: transform 0.2s, box-shadow 0.2s; }
+    .stat-card:hover { transform: translateY(-3px); box-shadow: 0 8px 20px rgba(0,0,0,0.15); }
+    .chart-container { position: relative; height: 300px; margin-bottom: 2rem; }
+    .chart-container-small { position: relative; height: 200px; }
+    
+    /* ===== BOTÓN DE PEDIDOS CON ALERTA ===== */
+    
+    /* Animación de pulso para alerta roja */
+    @keyframes pulse-red {
+        0%, 100% {
+            box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);
+        }
+        50% {
+            box-shadow: 0 0 0 20px rgba(220, 53, 69, 0);
+        }
+    }
+    
+    @keyframes pulse-green {
+        0%, 100% {
+            box-shadow: 0 0 0 0 rgba(25, 135, 84, 0.5);
+        }
+        50% {
+            box-shadow: 0 0 0 15px rgba(25, 135, 84, 0);
+        }
+    }
+    
+    @keyframes bounce {
+        0%, 100% {
+            transform: translateY(0) scale(1);
+        }
+        50% {
+            transform: translateY(-5px) scale(1.15);
+        }
+    }
+    
+    /* Botón rojo con alerta (pedidos pendientes) */
+    .btn-orders-alert {
+        position: relative;
+        border: 3px solid #dc3545 !important;
+        font-weight: 700;
+        transition: all 0.3s ease;
+    }
+    
+    .btn-orders-alert.has-pending {
+        background-color: #dc3545 !important;
+        color: white !important;
+        animation: pulse-red 2s infinite;
+    }
+    
+    .btn-orders-alert.has-pending:hover {
+        background-color: #bb2d3b !important;
+        border-color: #a71d2a !important;
+        transform: scale(1.05);
+        box-shadow: 0 8px 25px rgba(220, 53, 69, 0.5) !important;
+    }
+    
+    .btn-orders-alert.no-pending {
+        background-color: #198754 !important;
+        color: white !important;
+        animation: pulse-green 3s infinite;
+    }
+    
+    .btn-orders-alert.no-pending:hover {
+        background-color: #146c43 !important;
+        border-color: #0f5132 !important;
+        transform: scale(1.05);
+        box-shadow: 0 8px 25px rgba(25, 135, 84, 0.5) !important;
+    }
+    
+    /* Badge de notificación */
+    .badge-pending {
+        animation: bounce 1.5s infinite;
+        font-size: 1.1rem;
+        padding: 0.5rem 0.8rem;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    }
+    
+    /* Efecto de brillo en el ícono */
+    .btn-orders-alert .fs-2 {
+        transition: transform 0.3s ease;
+    }
+    
+    .btn-orders-alert:hover .fs-2 {
+        transform: scale(1.2) rotate(5deg);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="fw-bold mb-1">👑 Panel de Administración</h2>
+            <p class="text-muted">Gestión completa de Pods Luxury</p>
+        </div>
+    </div>
+
+    <!-- Estadísticas Principales -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm stat-card h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="bg-primary bg-opacity-10 p-3 rounded-circle me-3">
+                            <i class="bi bi-people text-primary fs-4"></i>
+                        </div>
+                        <div>
+                            <p class="text-muted small mb-1">Total Usuarios</p>
+                            <h3 class="fw-bold mb-0">{{ total_users }}</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm stat-card h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="bg-success bg-opacity-10 p-3 rounded-circle me-3">
+                            <i class="bi bi-currency-dollar text-success fs-4"></i>
+                        </div>
+                        <div>
+                            <p class="text-muted small mb-1">Ventas Totales</p>
+                            <h3 class="fw-bold mb-0">GS {{ "{:,.0f}".format(total_sales) }}</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm stat-card h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="bg-warning bg-opacity-10 p-3 rounded-circle me-3">
+                            <i class="bi bi-bag text-warning fs-4"></i>
+                        </div>
+                        <div>
+                            <p class="text-muted small mb-1">Total Pedidos</p>
+                            <h3 class="fw-bold mb-0">{{ total_orders }}</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm stat-card h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="bg-info bg-opacity-10 p-3 rounded-circle me-3">
+                            <i class="bi bi-clock-history text-info fs-4"></i>
+                        </div>
+                        <div>
+                            <p class="text-muted small mb-1">Pedidos Pendientes</p>
+                            <h3 class="fw-bold mb-0">{{ pending_orders }}</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Menú Rápido -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <a href="{{ url_for('admin.manage_products') }}" class="btn btn-warning w-100 py-3">
+                <i class="bi bi-box-seam fs-2 d-block mb-2"></i>
+                <strong>Productos</strong>
+                <small class="d-block">Gestionar productos</small>
+            </a>
+        </div>
+        
+        <!-- ✅ BOTÓN DE PEDIDOS CON ALERTA -->
+        <div class="col-md-3">
+            <a href="{{ url_for('admin.manage_orders') }}" 
+               class="btn btn-orders-alert w-100 py-3 {% if pending_orders > 0 %}has-pending{% else %}no-pending{% endif %}">
+                <i class="bi bi-cart-check fs-2 d-block mb-2"></i>
+                <strong>Pedidos</strong>
+                <small class="d-block">
+                    {% if pending_orders > 0 %}
+                        ⚠️ {{ pending_orders }} pendiente{{ 's' if pending_orders > 1 else '' }}
+                    {% else %}
+                        ✅ Sin pendientes
+                    {% endif %}
+                </small>
+                
+                {% if pending_orders > 0 %}
+                <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-warning text-dark badge-pending">
+                    {{ pending_orders }}
+                </span>
+                {% endif %}
+            </a>
+        </div>
+        
+        <div class="col-md-3">
+            <a href="{{ url_for('admin.manage_users') }}" class="btn btn-outline-success w-100 py-3">
+                <i class="bi bi-people fs-2 d-block mb-2"></i>
+                <strong>Usuarios</strong>
+                <small class="d-block">Gestionar usuarios</small>
+            </a>
+        </div>
+        <div class="col-md-3">
+            <a href="{{ url_for('admin.manage_categories') }}" class="btn btn-outline-info w-100 py-3">
+                <i class="bi bi-folder fs-2 d-block mb-2"></i>
+                <strong>Categorías</strong>
+                <small class="d-block">Administrar</small>
+            </a>
+        </div>
+    </div>
+
+    <!-- Gráficos -->
+    <div class="row g-4 mb-4">
+        <!-- Ventas por Categoría -->
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0 py-3">
+                    <h5 class="fw-bold mb-0">📊 Ventas por Categoría (30 días)</h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="categoryChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Pedidos por Estado -->
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0 py-3">
+                    <h5 class="fw-bold mb-0">📋 Pedidos por Estado</h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="statusChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Más Gráficos -->
+    <div class="row g-4 mb-4">
+        <!-- Ventas Diarias -->
+        <div class="col-md-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0 py-3">
+                    <h5 class="fw-bold mb-0">📈 Ventas Diarias (7 días)</h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="dailySalesChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Stock de Productos -->
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0 py-3">
+                    <h5 class="fw-bold mb-0">📦 Top 10 Productos (Stock)</h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container-small">
+                        <canvas id="stockChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pedidos Recientes y Bajo Stock -->
+    <div class="row g-4">
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0 py-3">
+                    <h5 class="fw-bold mb-0">📦 Pedidos Recientes</h5>
+                </div>
+                <div class="card-body p-0">
+                    {% if recent_orders %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Cliente</th>
+                                    <th>Total</th>
+                                    <th>Estado</th>
+                                    <th>Fecha</th>
+                                    <th>Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for order in recent_orders %}
+                                <tr>
+                                    <td>#{{ order.id }}</td>
+                                    <td>{{ order.customer.email }}</td>
+                                    <td>GS {{ "{:,.0f}".format(order.total_amount) }}</td>
+                                    <td><span class="badge bg-{{ order.status_color }}" id="order-status-{{ order.id }}">{{ order.status_label }}</span></td>
+                                    <td>{{ order.created_at.strftime('%d/%m %H:%M') }}</td>
+                                    <td>
+                                        <a href="{{ url_for('admin.manage_orders') }}" class="btn btn-sm btn-outline-secondary">
+                                            <i class="bi bi-eye"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted text-center py-4">No hay pedidos recientes</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0 py-3">
+                    <h5 class="fw-bold mb-0">⚠️ Bajo Stock</h5>
+                </div>
+                <div class="card-body">
+                    {% if low_stock_products %}
+                    <div class="list-group list-group-flush">
+                        {% for product in low_stock_products %}
+                        <div class="list-group-item px-0">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="mb-1">{{ product.name }}</h6>
+                                    <small class="text-muted">Stock: {{ product.stock }}</small>
+                                </div>
+                                <span class="badge bg-danger rounded-pill">{{ product.stock }}</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-muted text-center py-4">✅ Todo el stock está en niveles óptimos</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Audio para notificaciones -->
+<audio id="notificationSound" preload="auto">
+    <source src="{{ url_for('static', filename='audio/notification.wav') }}" type="audio/wav">
+</audio>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+// Configurar usuario actual para SocketIO
+window.currentUser = {
+    id: {{ current_user.id }},
+    isAdmin: true
+};
+
+document.addEventListener('DOMContentLoaded', function() {
+    // ===== GRÁFICO 1: Ventas por Categoría =====
+    const categoryCtx = document.getElementById('categoryChart');
+    if (categoryCtx) {
+        const categoryData = {{ sales_by_category|tojson }};
+        new Chart(categoryCtx, {
+            type: 'bar',
+            data: {
+                labels: categoryData.map(item => item[0]),
+                datasets: [{
+                    label: 'Ventas (GS)',
+                    data: categoryData.map(item => item[1]),
+                    backgroundColor: 'rgba(212, 175, 55, 0.7)',
+                    borderColor: 'rgba(212, 175, 55, 1)',
+                    borderWidth: 2,
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return 'GS ' + value.toLocaleString();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    // ===== GRÁFICO 2: Pedidos por Estado =====
+    const statusCtx = document.getElementById('statusChart');
+    if (statusCtx) {
+        const statusData = {{ orders_by_status|tojson }};
+        const statusLabels = {
+            'pending': '⏳ Pendiente',
+            'shipped': '🚚 Enviado',
+            'delivered': '✅ Entregado',
+            'cancelled': '❌ Cancelado'
+        };
+        const statusColors = {
+            'pending': 'rgba(255, 193, 7, 0.7)',
+            'shipped': 'rgba(13, 202, 240, 0.7)',
+            'delivered': 'rgba(25, 135, 84, 0.7)',
+            'cancelled': 'rgba(220, 53, 69, 0.7)'
+        };
+        
+        new Chart(statusCtx, {
+            type: 'doughnut',
+            data: {
+                labels: statusData.map(item => statusLabels[item[0]] || item[0]),
+                datasets: [{
+                    data: statusData.map(item => item[1]),
+                    backgroundColor: statusData.map(item => statusColors[item[0]] || 'rgba(108, 117, 125, 0.7)'),
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom' }
+                }
+            }
+        });
+    }
+    
+    // ===== GRÁFICO 3: Ventas Diarias =====
+    const dailyCtx = document.getElementById('dailySalesChart');
+    if (dailyCtx) {
+        const dailyData = {{ daily_sales|tojson }};
+        new Chart(dailyCtx, {
+            type: 'line',
+            data: {
+                labels: dailyData.map(item => item[0]),
+                datasets: [{
+                    label: 'Ventas Diarias (GS)',
+                    data: dailyData.map(item => item[1]),
+                    borderColor: 'rgba(212, 175, 55, 1)',
+                    backgroundColor: 'rgba(212, 175, 55, 0.1)',
+                    borderWidth: 3,
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return 'GS ' + value.toLocaleString();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    // ===== GRÁFICO 4: Stock de Productos =====
+    const stockCtx = document.getElementById('stockChart');
+    if (stockCtx) {
+        const stockData = {{ stock_products|tojson }};
+        new Chart(stockCtx, {
+            type: 'bar',
+            data: {
+                labels: stockData.map(item => item.name.length > 15 ? item.name.substring(0, 15) + '...' : item.name),
+                datasets: [{
+                    label: 'Stock',
+                    data: stockData.map(item => item.stock),
+                    backgroundColor: stockData.map(item => {
+                        if (item.stock < 10) return 'rgba(220, 53, 69, 0.7)';
+                        if (item.stock < 30) return 'rgba(255, 193, 7, 0.7)';
+                        return 'rgba(25, 135, 84, 0.7)';
+                    }),
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: 'y',
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    x: { beginAtZero: true }
+                }
+            }
+        });
+    }
+    
+    // ===== SOCKET.IO: Notificaciones en Tiempo Real =====
+    if (window.socket) {
+        window.socket.on('new_order', function(data) {
+            // Reproducir sonido
+            const notificationSound = document.getElementById('notificationSound');
+            if (notificationSound) {
+                notificationSound.play().catch(() => {});
+            }
+            
+            // Notificación del navegador
+            if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification('🆕 Nuevo Pedido', {
+                    body: `Pedido #${data.order_id} - GS ${data.total}`,
+                    icon: '/static/images/icon.png'
+                });
+            }
+            
+            // Recargar para mostrar nuevo pedido
+            setTimeout(() => location.reload(), 2000);
+        });
+    }
+});
+</script>
+{% endblock %}

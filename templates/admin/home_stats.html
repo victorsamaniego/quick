@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Pods Luxury{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="fw-bold mb-1">👑 Panel de Control - Pods Luxury</h2>
+            <p class="text-muted">Estadísticas generales del sistema</p>
+        </div>
+    </div>
+
+    <!-- Estadísticas Principales -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="bg-primary bg-opacity-10 p-3 rounded-circle me-3">
+                            <i class="bi bi-people text-primary fs-4"></i>
+                        </div>
+                        <div>
+                            <p class="text-muted small mb-1">Total Usuarios</p>
+                            <h3 class="fw-bold mb-0">{{ total_users }}</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="bg-success bg-opacity-10 p-3 rounded-circle me-3">
+                            <i class="bi bi-box-seam text-success fs-4"></i>
+                        </div>
+                        <div>
+                            <p class="text-muted small mb-1">Total Productos</p>
+                            <h3 class="fw-bold mb-0">{{ total_products }}</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="bg-warning bg-opacity-10 p-3 rounded-circle me-3">
+                            <i class="bi bi-boxes text-warning fs-4"></i>
+                        </div>
+                        <div>
+                            <p class="text-muted small mb-1">Stock Total</p>
+                            <h3 class="fw-bold mb-0">{{ total_stock }} unid.</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="bg-info bg-opacity-10 p-3 rounded-circle me-3">
+                            <i class="bi bi-graph-up text-info fs-4"></i>
+                        </div>
+                        <div>
+                            <p class="text-muted small mb-1">Margen Promedio</p>
+                            <h3 class="fw-bold mb-0">{{ "%.1f"|format(margen_promedio) }}%</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Estadísticas Financieras -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100 bg-success text-white">
+                <div class="card-body text-center">
+                    <i class="bi bi-cash-stack fs-1 mb-2"></i>
+                    <h5 class="fw-bold">Valor del Inventario</h5>
+                    <h2 class="fw-bold">GS {{ "{:,.0f}".format(total_valor_inventario) }}</h2>
+                    <small>Basado en precio de compra</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100 bg-primary text-white">
+                <div class="card-body text-center">
+                    <i class="bi bi-trending-up fs-1 mb-2"></i>
+                    <h5 class="fw-bold">Ganancia Potencial</h5>
+                    <h2 class="fw-bold">GS {{ "{:,.0f}".format(total_ganancia_potencial) }}</h2>
+                    <small>Si se vende todo el stock</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100 bg-warning text-dark">
+                <div class="card-body text-center">
+                    <i class="bi bi-percent fs-1 mb-2"></i>
+                    <h5 class="fw-bold">ROI Potencial</h5>
+                    <h2 class="fw-bold">{{ "%.1f"|format(margen_promedio) }}%</h2>
+                    <small>Retorno de inversión</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Usuarios Registrados -->
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0 py-3">
+                    <h5 class="fw-bold mb-0">👥 Usuarios Registrados</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Email</th>
+                                    <th>Teléfono</th>
+                                    <th>Fecha Registro</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for user in users_list %}
+                                <tr>
+                                    <td>#{{ user.id }}</td>
+                                    <td>{{ user.email }}</td>
+                                    <td>{{ user.phone }}</td>
+                                    <td>{{ user.created_at.strftime('%d/%m/%Y') }}</td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted py-4">
+                                        No hay usuarios registrados
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Top Productos Más Rentables -->
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0 py-3">
+                    <h5 class="fw-bold mb-0">💰 Top 5 Productos Más Rentables</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Producto</th>
+                                    <th>Stock</th>
+                                    <th>Ganancia/Unidad</th>
+                                    <th>Ganancia Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for product in top_rentables %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ product.name }}</strong><br>
+                                        <small class="text-muted">
+                                            Compra: GS {{ "{:,.0f}".format(product.precio_compra) }} | 
+                                            Venta: GS {{ "{:,.0f}".format(product.price) }}
+                                        </small>
+                                    </td>
+                                    <td>{{ product.stock }}</td>
+                                    <td>
+                                        <span class="badge bg-success">
+                                            GS {{ "{:,.0f}".format(product.ganancia_unitaria) }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <strong class="text-primary">
+                                            GS {{ "{:,.0f}".format(product.ganancia_potencial) }}
+                                        </strong>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted py-4">
+                                        No hay productos
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Botones de Acceso Rápido -->
+    <div class="row g-3 mt-4 mb-4">
+        <div class="col-md-3">
+            <a href="{{ url_for('admin.manage_products') }}" class="btn btn-outline-warning w-100 py-3">
+                <i class="bi bi-box-seam fs-2 d-block mb-2"></i>
+                <strong>Gestionar Productos</strong>
+            </a>
+        </div>
+        <div class="col-md-3">
+            <a href="{{ url_for('admin.manage_orders') }}" class="btn btn-outline-primary w-100 py-3">
+                <i class="bi bi-cart-check fs-2 d-block mb-2"></i>
+                <strong>Ver Pedidos</strong>
+            </a>
+        </div>
+        <div class="col-md-3">
+            <a href="{{ url_for('admin.manage_users') }}" class="btn btn-outline-success w-100 py-3">
+                <i class="bi bi-people fs-2 d-block mb-2"></i>
+                <strong>Gestionar Usuarios</strong>
+            </a>
+        </div>
+        <div class="col-md-3">
+            <a href="{{ url_for('admin.create_product') }}" class="btn btn-warning w-100 py-3">
+                <i class="bi bi-plus-lg fs-2 d-block mb-2"></i>
+                <strong>Nuevo Producto</strong>
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
