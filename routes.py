@@ -4,16 +4,15 @@ from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta, timezone
 import os
 import secrets
+import cloudinary.uploader
 from functools import wraps
 from math import radians, sin, cos, sqrt, atan2
-from models import db, User, OTPCode, Product, Category, Order, OrderItem, Business, DeliveryRequest, ChatMessage, SecurityQuestion, SupportChat, DeliveryBusinessChat
+from models import db, User, Product, Category, Order, OrderItem, Business, DeliveryRequest, ChatMessage, SecurityQuestion, SupportChat, DeliveryBusinessChat, UserMessage, Notification, NotificationRecipient
 from forms import (
-    RegistrationForm, LoginForm, OTPVerificationForm, 
-    PasswordResetRequestForm, PasswordResetForm,
+    RegistrationForm, LoginForm, PasswordResetForm,
     ProductForm, OrderForm, AdminUserForm, CategoryForm
 )
-from flask_mail import Message
-from extensions import limiter 
+from extensions import limiter
 
 # Blueprints
 main_bp = Blueprint('main', __name__)
@@ -68,7 +67,6 @@ def subscription_required(f):
             business = current_user.business
             now = datetime.now(timezone.utc).date()
             
-            # Si el negocio está exento de suscripción, dejar pasar
             if hasattr(business, 'requires_subscription') and not business.requires_subscription:
                 return f(*args, **kwargs)
             
@@ -91,33 +89,18 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in current_app.config['ALLOWED_EXTENSIONS']
 
 
-def send_otp_email(user_email, code, purpose):
-    subject = {
-        'register': 'Confirma tu registro en QuickGo',
-        'reset_password': 'Restablece tu contrasena - QuickGo'
-    }.get(purpose, 'Codigo de verificacion - QuickGo')
-    
-    body = f"""
-    Hola,
-    
-    Tu codigo de verificacion es: {code}
-    
-    Este codigo expira en {current_app.config['OTP_EXPIRY_MINUTES']} minutos.
-    
-    Si no solicitaste este codigo, ignora este mensaje.
-    
-    Saludos,
-    Equipo QuickGo
-    """
-    
+def upload_to_cloudinary(file_obj, folder='quickgo'):
+    """Sube un archivo a Cloudinary y retorna la URL pública"""
     try:
-        msg = Message(subject, recipients=[user_email], body=body)
-        current_app.mail.send(msg)
-        return True
+        result = cloudinary.uploader.upload(
+            file_obj,
+            folder=folder,
+            resource_type='auto'
+        )
+        return result['secure_url']
     except Exception as e:
-        current_app.logger.error(f"Error sending email: {e}")
-        print(f"\n OTP CODE FOR {user_email}: {code}\n")
-        return True
+        print(f"❌ Error subiendo a Cloudinary: {e}")
+        return None
 
 
 def get_featured_products(limit=8):
@@ -193,6 +176,7 @@ def index():
 
 
 @main_bp.route('/register', methods=['GET', 'POST'])
+@limiter.limit("3 per minute")
 def register():
     if current_user.is_authenticated:
         return redirect(url_for('main.dashboard'))
@@ -214,57 +198,44 @@ def register():
             flash(f'❌ Contraseña débil: {" - ".join(password_errors)}', 'danger')
             return render_template('register.html', form=form)
         
+        es_comerciante = (form.account_type.data == 'business')
+        
         user = User(
             username=form.username.data,
             email=form.email.data,
             phone=form.phone.data,
             is_active=True,
-            security_question_id=form.security_question_id.data
+            security_question_id=form.security_question_id.data,
+            is_admin=es_comerciante
         )
         user.set_password(form.password.data)
         user.set_security_answer(form.security_answer.data)
         
         db.session.add(user)
-        db.session.commit()
+        db.session.flush()
         
+        if es_comerciante:
+            new_business = Business(
+                name=f"Pendiente - {user.username}",
+                slug=f"pending-{user.id}",
+                description="Solicitud de comerciante pendiente de aprobación",
+                phone=user.phone,
+                is_active=False,
+                subscription_status='pending'
+            )
+            user.business_id = new_business.id
+            db.session.add(new_business)
+            db.session.commit()
+            
+            flash('📋 Tu solicitud de comerciante fue enviada. El Super Admin la revisará y activará tu cuenta pronto.', 'info')
+            return redirect(url_for('main.login'))
+        
+        db.session.commit()
         login_user(user)
-        flash(f'¡Bienvenido {user.username}! Tu cuenta fue creada exitosamente.', 'success')
+        flash(f'🎉 ¡Bienvenido {user.username}! Tu cuenta de comprador fue creada exitosamente.', 'success')
         return redirect(url_for('main.dashboard'))
     
     return render_template('register.html', form=form)
-
-
-@main_bp.route('/verify-otp/<int:user_id>/<purpose>', methods=['GET', 'POST'])
-def verify_otp(user_id, purpose):
-    form = OTPVerificationForm()
-    user = User.query.get_or_404(user_id)
-    
-    if form.validate_on_submit():
-        otp = OTPCode.query.filter_by(
-            user_id=user_id, 
-            code=form.code.data, 
-            purpose=purpose, 
-            used=False
-        ).first()
-        
-        if otp and not otp.is_expired():
-            otp.used = True
-            
-            if purpose == 'register':
-                user.is_active = True
-                login_user(user)
-                db.session.commit()
-                flash('Registro exitoso! Bienvenido a QuickGo.', 'success')
-                return redirect(url_for('main.dashboard'))
-            elif purpose == 'reset_password':
-                session['reset_user_id'] = user_id
-                flash('Codigo verificado. Ahora establece tu nueva contrasena.', 'success')
-                return redirect(url_for('main.reset_password_new'))
-            db.session.commit()
-        else:
-            flash('Codigo invalido o expirado. Solicita uno nuevo.', 'danger')
-    
-    return render_template('verify_otp.html', form=form, email=user.email)
 
 
 @main_bp.route('/login', methods=['GET', 'POST'])
@@ -283,11 +254,11 @@ def login():
         
         if user and user.check_password(form.password.data):
             if not user.is_active:
-                flash('⚠️ Tu cuenta no está activada.', 'warning')
+                flash('️ Tu cuenta no está activada.', 'warning')
                 return redirect(url_for('main.login'))
             
             login_user(user, remember=form.remember_me.data)
-            flash(f'👋 ¡Bienvenido de nuevo, {user.display_name}!', 'success')
+            flash(f' 👋 ¡Bienvenido de nuevo, {user.display_name}!', 'success')
             
             next_page = request.args.get('next')
             
@@ -543,16 +514,18 @@ def create_order():
         cash_bill_amount = float(request.form.get('cash_bill_amount', 0)) if payment_method == 'cash' else 0.0
         receipt_path = None
         
+        # 🔥 CLOUDINARY: Subir comprobante de pago a la nube
         if payment_method == 'transfer' and 'payment_receipt' in request.files:
             file = request.files['payment_receipt']
             if file and file.filename != '':
                 ext = file.filename.rsplit('.', 1)[1].lower()
                 if ext in {'png', 'jpg', 'jpeg', 'pdf'}:
-                    filename = secure_filename(f"rec_{current_user.id}_{secrets.token_hex(4)}.{ext}")
-                    receipt_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'uploads', 'receipts')
-                    os.makedirs(receipt_dir, exist_ok=True)
-                    file.save(os.path.join(receipt_dir, filename))
-                    receipt_path = f'uploads/receipts/{filename}'
+                    receipt_url = upload_to_cloudinary(file, folder='quickgo/receipts')
+                    if receipt_url:
+                        receipt_path = receipt_url
+                    else:
+                        flash('⚠️ Error al subir el comprobante. Intentá de nuevo.', 'danger')
+                        return redirect(url_for('main.order_confirm'))
 
         order = Order(
             user_id=current_user.id,
@@ -670,116 +643,7 @@ def account_settings():
     return render_template('account_settings.html', current_theme=current_user.theme_color or 'gold')
 
 
-@main_bp.route('/password/reset/request', methods=['GET', 'POST'])
-def reset_password_request():
-    if current_user.is_authenticated:
-        return redirect(url_for('main.dashboard'))
-    
-    form = PasswordResetRequestForm()
-    if form.validate_on_submit():
-        user = User.query.filter_by(email=form.email.data).first()
-        if user:
-            OTPCode.query.filter_by(user_id=user.id, purpose='reset_password', used=False).delete()
-            
-            otp = OTPCode(
-                user_id=user.id,
-                code=OTPCode.generate_code(),
-                purpose='reset_password'
-            )
-            db.session.add(otp)
-            db.session.commit()
-            
-            if send_otp_email(user.email, otp.code, 'reset_password'):
-                flash('Hemos enviado un codigo de recuperacion a tu email.', 'success')
-                return redirect(url_for('main.verify_otp', user_id=user.id, purpose='reset_password'))
-        
-        flash('Si el email existe en nuestro sistema, recibiras instrucciones.', 'info')
-        return redirect(url_for('main.login'))
-    
-    return render_template('reset_request.html', form=form)
-
-
-@main_bp.route('/password/reset/new', methods=['GET', 'POST'])
-def reset_password_new():
-    user_id = session.get('reset_user_id')
-    
-    if not user_id:
-        flash('Sesion expirada. Solicita un nuevo codigo.', 'warning')
-        return redirect(url_for('main.reset_password_request'))
-    
-    user = User.query.get(user_id)
-    if not user:
-        session.pop('reset_user_id', None)
-        return redirect(url_for('main.login'))
-    
-    form = PasswordResetForm()
-    if form.validate_on_submit():
-        user.set_password(form.password.data)
-        db.session.commit()
-        session.pop('reset_user_id', None)
-        flash('Contrasena actualizada. Ahora puedes iniciar sesion.', 'success')
-        return redirect(url_for('main.login'))
-    
-    return render_template('reset_new.html', form=form, email=user.email)
-
-
-@main_bp.route('/activate', methods=['GET', 'POST'])
-@login_required
-def activate_subscription():
-    if not current_user.is_admin or not current_user.business:
-        return redirect(url_for('main.dashboard'))
-        
-    business = current_user.business
-    
-    # Si el negocio está exento de suscripción, redirigir al dashboard
-    if hasattr(business, 'requires_subscription') and not business.requires_subscription:
-        if business.subscription_status != 'active':
-            business.subscription_status = 'active'
-            db.session.commit()
-        return redirect(url_for('admin.dashboard'))
-    
-    now = datetime.now(timezone.utc)
-    
-    if business.subscription_status == 'active' and business.billing_end:
-        billing_end = business.billing_end
-        if billing_end.tzinfo is None:
-            billing_end = billing_end.replace(tzinfo=timezone.utc)
-        if billing_end >= now:
-            return redirect(url_for('main.dashboard'))
-        
-    if request.method == 'POST':
-        code_input = request.form.get('activation_code', '').strip().upper()
-        
-        if business.activation_code and business.activation_code == code_input:
-            code_expires = business.code_expires_at
-            if code_expires:
-                if code_expires.tzinfo is None:
-                    code_expires = code_expires.replace(tzinfo=timezone.utc)
-                
-                if code_expires > now:
-                    business.subscription_status = 'active'
-                    
-                    today = datetime.now(timezone.utc).date()
-                    if not business.billing_start:
-                        business.billing_start = today
-                    business.billing_end = today + timedelta(days=30)
-                    
-                    business.activation_code = None
-                    business.code_expires_at = None
-                    
-                    db.session.commit()
-                    
-                    flash('✅ Suscripción activada exitosamente por 30 días! Ya podés operar normalmente.', 'success')
-                    return redirect(url_for('main.dashboard'))
-                else:
-                    flash('⏰ El código ha expirado. Solicitá uno nuevo al administrador.', 'danger')
-            else:
-                flash('❌ No hay código de activación configurado.', 'danger')
-        else:
-            flash('❌ Código inválido. Verificá e intentá de nuevo.', 'danger')
-            
-    return render_template('activate_subscription.html', business=business)
-
+# ============ RECUPERACIÓN DE CONTRASEÑA (SOLO PREGUNTAS DE SEGURIDAD) ============
 
 @main_bp.route('/recover', methods=['GET', 'POST'])
 def recover_account():
@@ -798,7 +662,7 @@ def recover_account():
             return render_template('recover_account.html')
         
         if not user.security_question_id or not user.security_answer_hash:
-            flash('⚠️ Este usuario no tiene pregunta de seguridad configurada. Contactá al soporte.', 'warning')
+            flash('️ Este usuario no tiene pregunta de seguridad configurada. Contactá al soporte.', 'warning')
             return render_template('recover_account.html')
         
         session['recover_user_id'] = user.id
@@ -811,7 +675,7 @@ def recover_account():
 def answer_security_question():
     user_id = session.get('recover_user_id')
     if not user_id:
-        flash('⚠️ Sesión expirada. Iniciá de nuevo.', 'warning')
+        flash('️ Sesión expirada. Iniciá de nuevo.', 'warning')
         return redirect(url_for('main.recover_account'))
     
     user = User.query.get(user_id)
@@ -827,7 +691,7 @@ def answer_security_question():
             session['security_verified'] = True
             return redirect(url_for('main.select_correct_answer'))
         else:
-            flash('❌ Respuesta incorrecta. Intentá de nuevo.', 'danger')
+            flash(' Respuesta incorrecta. Intentá de nuevo.', 'danger')
     
     return render_template('answer_security_question.html', 
                           question=user.security_question.question,
@@ -857,7 +721,7 @@ def select_correct_answer():
             session['final_verified'] = True
             return redirect(url_for('main.reset_password_final'))
         else:
-            flash('❌ Respuesta incorrecta. Intentá de nuevo.', 'danger')
+            flash(' Respuesta incorrecta. Intentá de nuevo.', 'danger')
             return redirect(url_for('main.select_correct_answer'))
     
     return render_template('select_answer.html', 
@@ -871,7 +735,7 @@ def reset_password_final():
     final_verified = session.get('final_verified')
     
     if not user_id or not final_verified:
-        flash('️ Debés completar la verificación primero.', 'warning')
+        flash('⚠️ Debés completar la verificación primero.', 'warning')
         return redirect(url_for('main.recover_account'))
     
     user = User.query.get(user_id)
@@ -887,7 +751,7 @@ def reset_password_final():
         confirm_password = request.form.get('confirm_password', '')
         
         if new_password != confirm_password:
-            flash('❌ Las contraseñas no coinciden.', 'danger')
+            flash(' Las contraseñas no coinciden.', 'danger')
             return render_template('reset_password_final.html', username=user.display_name)
         
         password_errors = User.validate_strong_password(new_password)
@@ -907,6 +771,8 @@ def reset_password_final():
     
     return render_template('reset_password_final.html', username=user.display_name)
 
+
+# ============ API ENDPOINTS ============
 
 @main_bp.route('/api/validate-password', methods=['POST'])
 def validate_password():
@@ -976,6 +842,65 @@ def update_user_location():
         })
     
     return jsonify({'status': 'error', 'message': 'Coordenadas inválidas'}), 400
+
+
+# ============ SUSCRIPCIÓN ============
+
+@main_bp.route('/activate', methods=['GET', 'POST'])
+@login_required
+def activate_subscription():
+    if not current_user.is_admin or not current_user.business:
+        return redirect(url_for('main.dashboard'))
+        
+    business = current_user.business
+    
+    if hasattr(business, 'requires_subscription') and not business.requires_subscription:
+        if business.subscription_status != 'active':
+            business.subscription_status = 'active'
+            db.session.commit()
+        return redirect(url_for('admin.dashboard'))
+    
+    now = datetime.now(timezone.utc)
+    
+    if business.subscription_status == 'active' and business.billing_end:
+        billing_end = business.billing_end
+        if billing_end.tzinfo is None:
+            billing_end = billing_end.replace(tzinfo=timezone.utc)
+        if billing_end >= now:
+            return redirect(url_for('main.dashboard'))
+        
+    if request.method == 'POST':
+        code_input = request.form.get('activation_code', '').strip().upper()
+        
+        if business.activation_code and business.activation_code == code_input:
+            code_expires = business.code_expires_at
+            if code_expires:
+                if code_expires.tzinfo is None:
+                    code_expires = code_expires.replace(tzinfo=timezone.utc)
+                
+                if code_expires > now:
+                    business.subscription_status = 'active'
+                    
+                    today = datetime.now(timezone.utc).date()
+                    if not business.billing_start:
+                        business.billing_start = today
+                    business.billing_end = today + timedelta(days=30)
+                    
+                    business.activation_code = None
+                    business.code_expires_at = None
+                    
+                    db.session.commit()
+                    
+                    flash('✅ Suscripción activada exitosamente por 30 días! Ya podés operar normalmente.', 'success')
+                    return redirect(url_for('main.dashboard'))
+                else:
+                    flash(' El código ha expirado. Solicitá uno nuevo al administrador.', 'danger')
+            else:
+                flash('❌ No hay código de activación configurado.', 'danger')
+        else:
+            flash('❌ Código inválido. Verificá e intentá de nuevo.', 'danger')
+            
+    return render_template('activate_subscription.html', business=business)
 
 
 # ============ ADMIN ROUTES ============
@@ -1105,9 +1030,7 @@ def dashboard():
 @subscription_required
 def manage_users():
     business_id = current_user.business_id
-    users = User.query.filter(
-        (User.business_id == business_id) | (User.business_id == None)
-    ).order_by(User.created_at.desc()).all()
+    users = User.query.filter_by(business_id=business_id).order_by(User.created_at.desc()).all()
     return render_template('admin/users.html', users=users)
 
 
@@ -1117,8 +1040,13 @@ def manage_users():
 @subscription_required
 def edit_user(user_id):
     user = User.query.get_or_404(user_id)
-    if user.business_id and user.business_id != current_user.business_id and not user.is_customer:
-        flash('No podes editar usuarios de otros negocios.', 'danger')
+    
+    if user.business_id != current_user.business_id:
+        flash('❌ No podés editar usuarios de otros negocios.', 'danger')
+        return redirect(url_for('admin.manage_users'))
+    
+    if user.is_super_admin:
+        flash('❌ No podés editar a un Super Admin.', 'danger')
         return redirect(url_for('admin.manage_users'))
     
     form = AdminUserForm(obj=user)
@@ -1131,7 +1059,7 @@ def edit_user(user_id):
         user.is_delivery = request.form.get('is_delivery') == 'true'
         
         db.session.commit()
-        flash('Usuario actualizado.', 'success')
+        flash('✅ Usuario actualizado.', 'success')
         return redirect(url_for('admin.manage_users'))
     
     return render_template('admin/user_form.html', form=form, user=user)
@@ -1143,19 +1071,23 @@ def edit_user(user_id):
 @subscription_required
 def reset_user_password(user_id):
     user = User.query.get_or_404(user_id)
-    if user.business_id and user.business_id != current_user.business_id:
-        flash('No podes resetear contrasenas de otros negocios.', 'danger')
+    
+    if user.business_id != current_user.business_id:
+        flash('❌ No podés resetear contraseñas de usuarios de otros negocios.', 'danger')
+        return redirect(url_for('admin.manage_users'))
+    
+    if user.is_super_admin:
+        flash('❌ No podés resetear la contraseña de un Super Admin.', 'danger')
         return redirect(url_for('admin.manage_users'))
     
     new_password = secrets.token_urlsafe(8)
     user.set_password(new_password)
     db.session.commit()
     
-    flash(f'Contrasena reseteada. Nueva contrasena temporal: {new_password}', 'success')
+    flash(f'🔑 Contraseña reseteada. Nueva contraseña temporal: {new_password}', 'success')
     return redirect(url_for('admin.manage_users'))
 
 
-# 🔥 CORREGIDO: SOLO categorías de ESTE negocio
 @admin_bp.route('/products')
 @login_required
 @business_admin_required
@@ -1166,7 +1098,6 @@ def manage_products():
     return render_template('admin/products.html', products=products, categories=categories)
 
 
-# 🔥 CORREGIDO: SOLO categorías de ESTE negocio
 @admin_bp.route('/products/new', methods=['GET', 'POST'])
 @login_required
 @business_admin_required
@@ -1192,13 +1123,13 @@ def create_product():
             image_url=None
         )
         
+        # 🔥 CLOUDINARY: Subir imagen de producto a la nube
         if 'image' in request.files:
             file = request.files['image']
             if file and file.filename != '' and allowed_file(file.filename):
-                filename = secure_filename(f"{secrets.token_hex(8)}_{file.filename}")
-                filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], 'uploads', filename)
-                file.save(filepath)
-                product.image_url = f'uploads/{filename}'
+                image_url = upload_to_cloudinary(file, folder='quickgo/products')
+                if image_url:
+                    product.image_url = image_url
         
         db.session.add(product)
         db.session.commit()
@@ -1208,7 +1139,6 @@ def create_product():
     return render_template('admin/product_form.html', form=form, categories=categories)
 
 
-# 🔥 CORREGIDO: SOLO categorías de ESTE negocio
 @admin_bp.route('/products/<int:product_id>/edit', methods=['GET', 'POST'])
 @login_required
 @business_admin_required
@@ -1231,19 +1161,13 @@ def edit_product(product_id):
         product.stock = form.stock.data
         product.category_id = form.category_id.data
         
+        # 🔥 CLOUDINARY: Subir nueva imagen si se proporciona
         if 'image' in request.files:
             file = request.files['image']
             if file and file.filename != '' and allowed_file(file.filename):
-                if product.image_url:
-                    old_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 
-                                          os.path.basename(product.image_url))
-                    if os.path.exists(old_path):
-                        os.remove(old_path)
-                
-                filename = secure_filename(f"{secrets.token_hex(8)}_{file.filename}")
-                filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], 'uploads', filename)
-                file.save(filepath)
-                product.image_url = f'uploads/{filename}'
+                image_url = upload_to_cloudinary(file, folder='quickgo/products')
+                if image_url:
+                    product.image_url = image_url
         
         db.session.commit()
         flash('Producto actualizado.', 'success')
@@ -1262,19 +1186,13 @@ def delete_product(product_id):
         flash('No podes eliminar productos de otros negocios.', 'danger')
         return redirect(url_for('admin.manage_products'))
     
-    if product.image_url:
-        img_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 
-                               os.path.basename(product.image_url))
-        if os.path.exists(img_path):
-            os.remove(img_path)
-    
+    # Con Cloudinary no borramos el archivo, solo el registro de la BD
     db.session.delete(product)
     db.session.commit()
     flash('Producto eliminado.', 'info')
     return redirect(url_for('admin.manage_products'))
 
 
-# 🔥 CORREGIDO: SOLO categorías de ESTE negocio
 @admin_bp.route('/categories', methods=['GET', 'POST'])
 @login_required
 @business_admin_required
@@ -1352,7 +1270,6 @@ def update_order_status(order_id):
     delivery_driver_id = request.form.get('delivery_driver_id', type=int)
     
     if new_status in ['pending', 'shipped', 'delivered', 'cancelled']:
-        old_status = order.status
         order.status = new_status
         
         if delivery_driver_id and new_status == 'shipped':
@@ -1537,7 +1454,7 @@ def delivery_request_status(request_id):
         delivery_request.status = 'expired'
         db.session.commit()
         
-        flash('⌛ La solicitud expiró. Buscando más deliverys...', 'warning')
+        flash(' La solicitud expiró. Buscando más deliverys...', 'warning')
         return redirect(url_for('admin.request_delivery', order_id=delivery_request.order_id))
     
     return render_template('admin/delivery_request_status.html', request=delivery_request)
@@ -1637,7 +1554,7 @@ def reject_delivery_request(request_id):
         'driver_id': current_user.id
     }, room=f'business_{delivery_request.business_id}')
     
-    flash('❌ Solicitud rechazada', 'info')
+    flash(' Solicitud rechazada', 'info')
     return redirect(url_for('delivery.dashboard'))
 
 
@@ -1723,7 +1640,8 @@ def send_chat_message(order_id):
     return jsonify({'success': True, 'message': message.to_dict()})
 
 
-# 🔥 CORREGIDO: Ganancia nocturna con hora de Paraguay (UTC-3)
+# ============ DELIVERY ROUTES ============
+
 @delivery_bp.route('/dashboard')
 @login_required
 def dashboard():
@@ -1731,7 +1649,6 @@ def dashboard():
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('main.index'))
     
-    # Hora local de Paraguay (UTC-3)
     paraguay_tz = timezone(timedelta(hours=-3))
     now = datetime.now(paraguay_tz)
     today = now.date()
@@ -1760,7 +1677,6 @@ def dashboard():
             delivered_at = order.delivered_at
             
             if delivered_at:
-                # Convertir a hora de Paraguay
                 if delivered_at.tzinfo is None:
                     delivered_at = delivered_at.replace(tzinfo=timezone.utc)
                 
@@ -1768,12 +1684,10 @@ def dashboard():
                 delivered_date = delivered_at_local.date()
                 delivered_hour = delivered_at_local.hour
                 
-                # Ganancia de HOY
                 if delivered_date == today:
                     today_earnings += order.delivery_fee
                     today_deliveries += 1
                 
-                # Ganancia NOCTURNA: entre 18:00 y 06:00
                 if delivered_hour >= 18 or delivered_hour < 6:
                     night_earnings += order.delivery_fee
                     night_deliveries += 1
@@ -2009,6 +1923,8 @@ def dashboard():
     recent_orders = Order.query.order_by(Order.created_at.desc()).limit(20).all()
     recent_businesses = Business.query.order_by(Business.created_at.desc()).limit(10).all()
     
+    messages_sent_count = UserMessage.query.filter_by(sender_id=current_user.id).count()
+    
     return render_template('super_admin/dashboard.html',
         total_businesses=total_businesses,
         active_businesses=active_businesses,
@@ -2021,7 +1937,8 @@ def dashboard():
         top_deliveries=top_deliveries,
         low_performers=low_performers,
         recent_orders=recent_orders,
-        recent_businesses=recent_businesses
+        recent_businesses=recent_businesses,
+        messages_sent_count=messages_sent_count
     )
 
 
@@ -2068,14 +1985,13 @@ def create_business():
             delivery_fee_per_km=float(request.form.get('delivery_fee_per_km', 1000))
         )
         
+        # 🔥 CLOUDINARY: Subir logo del negocio a la nube
         if 'logo' in request.files:
             file = request.files['logo']
             if file and file.filename != '':
-                filename = secure_filename(f"{secrets.token_hex(8)}_{file.filename}")
-                filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], 'uploads', 'logos', filename)
-                os.makedirs(os.path.dirname(filepath), exist_ok=True)
-                file.save(filepath)
-                business.logo_url = f'uploads/logos/{filename}'
+                logo_url = upload_to_cloudinary(file, folder='quickgo/logos')
+                if logo_url:
+                    business.logo_url = logo_url
         
         db.session.add(business)
         db.session.commit()
@@ -2108,11 +2024,9 @@ def edit_business(business_id):
         if 'billing_end' in request.form and request.form.get('billing_end'):
             business.billing_end = datetime.strptime(request.form.get('billing_end'), '%Y-%m-%d').date()
         
-        # 🔥 NUEVO: Control de suscripción elegible
         business.requires_subscription = 'requires_subscription' in request.form
         business.subscription_exempt_reason = request.form.get('subscription_exempt_reason', '').strip()
         
-        # Si está exento, activar automáticamente
         if not business.requires_subscription:
             business.subscription_status = 'active'
             business.activation_code = None
@@ -2131,7 +2045,6 @@ def edit_business(business_id):
 def generate_activation_code(business_id):
     business = Business.query.get_or_404(business_id)
     
-    # Si el negocio está exento, no generar código
     if not business.requires_subscription:
         flash(f'ℹ️ El negocio "{business.name}" está EXENTO de suscripción. No necesita código.', 'info')
         return redirect(url_for('super_admin.edit_business', business_id=business_id))
@@ -2150,8 +2063,8 @@ def generate_activation_code(business_id):
     db.session.commit()
     
     flash(f'🔑 CÓDIGO GENERADO: {new_code}', 'warning')
-    flash(f'⏰ Válido por 5 horas (hasta {business.code_expires_at.strftime("%H:%M %d/%m/%Y")})', 'info')
-    flash(f'📋 Copiá este código y envíaselo al negocio para que active su suscripción', 'info')
+    flash(f' Válido por 5 horas (hasta {business.code_expires_at.strftime("%H:%M %d/%m/%Y")})', 'info')
+    flash(f' Copiá este código y envíaselo al negocio para que active su suscripción', 'info')
     
     return redirect(url_for('super_admin.edit_business', business_id=business_id))
 
@@ -2294,7 +2207,7 @@ def analytics():
     )
 
 
-# ============ NUEVAS RUTAS: CHAT SOPORTE Y CHAT DELIVERY-NEGOCIO ============
+# ============ CHAT SOPORTE Y CHAT DELIVERY-NEGOCIO ============
 
 @main_bp.route('/soporte', methods=['GET', 'POST'])
 @login_required
@@ -2415,3 +2328,188 @@ def chat_delivery_negocio(order_id):
     
     negocio = Business.query.get(order.business_id)
     return render_template('chat_delivery.html', order=order, negocio=negocio, mensajes=mensajes)
+
+
+# ============ MENSAJES DEL SUPER ADMIN A USUARIOS ============
+
+@super_admin_bp.route('/users/<int:user_id>/send-message', methods=['GET', 'POST'])
+@login_required
+@super_admin_required
+def send_message_to_user(user_id):
+    """Super Admin envía mensaje a cualquier usuario"""
+    recipient = User.query.get_or_404(user_id)
+    
+    if request.method == 'POST':
+        subject = request.form.get('subject', '').strip()
+        message_text = request.form.get('message', '').strip()
+        
+        if not subject or not message_text:
+            flash('❌ El asunto y el mensaje son obligatorios.', 'danger')
+            return redirect(url_for('super_admin.send_message_to_user', user_id=user_id))
+        
+        new_message = UserMessage(
+            sender_id=current_user.id,
+            recipient_id=recipient.id,
+            subject=subject,
+            message=message_text
+        )
+        db.session.add(new_message)
+        db.session.commit()
+        
+        flash(f'✅ Mensaje enviado a {recipient.display_name} ({recipient.email})', 'success')
+        return redirect(url_for('super_admin.manage_users'))
+    
+    return render_template('super_admin/send_message.html', recipient=recipient)
+
+
+@super_admin_bp.route('/messages/sent')
+@login_required
+@super_admin_required
+def sent_messages():
+    """Super Admin ve todos los mensajes enviados"""
+    messages = UserMessage.query.filter_by(sender_id=current_user.id)\
+        .order_by(UserMessage.created_at.desc()).all()
+    return render_template('super_admin/sent_messages.html', messages=messages)
+
+
+@main_bp.route('/mis-mensajes')
+@login_required
+def my_messages():
+    """Usuario ve sus mensajes recibidos del Super Admin"""
+    messages = UserMessage.query.filter_by(recipient_id=current_user.id)\
+        .order_by(UserMessage.created_at.desc()).all()
+    
+    for msg in messages:
+        if not msg.is_read:
+            msg.is_read = True
+    db.session.commit()
+    
+    return render_template('user_messages.html', messages=messages)
+
+
+@main_bp.route('/mis-mensajes/<int:message_id>')
+@login_required
+def read_message(message_id):
+    """Usuario lee un mensaje específico"""
+    message = UserMessage.query.get_or_404(message_id)
+    
+    if message.recipient_id != current_user.id:
+        flash(' Acceso denegado.', 'danger')
+        return redirect(url_for('main.my_messages'))
+    
+    if not message.is_read:
+        message.is_read = True
+        db.session.commit()
+    
+    return render_template('read_message.html', message=message)
+
+
+# ============ NOTIFICACIONES MASIVAS ============
+
+@super_admin_bp.route('/notifications')
+@login_required
+@super_admin_required
+def notifications_list():
+    """Lista de todas las notificaciones enviadas"""
+    notifications = Notification.query.order_by(Notification.created_at.desc()).all()
+    return render_template('super_admin/notifications_list.html', notifications=notifications)
+
+
+@super_admin_bp.route('/notifications/new', methods=['GET', 'POST'])
+@login_required
+@super_admin_required
+def create_notification():
+    """Crear nueva notificación masiva"""
+    if request.method == 'POST':
+        title = request.form.get('title', '').strip()
+        message = request.form.get('message', '').strip()
+        notification_type = request.form.get('notification_type', 'all')
+        
+        if not title or not message:
+            flash('❌ El título y el mensaje son obligatorios.', 'danger')
+            return redirect(url_for('super_admin.create_notification'))
+        
+        notification = Notification(
+            title=title,
+            message=message,
+            notification_type=notification_type,
+            sent_by=current_user.id
+        )
+        db.session.add(notification)
+        db.session.flush()
+        
+        if notification_type == 'all':
+            recipients = User.query.filter_by(is_active=True).all()
+        elif notification_type == 'business':
+            recipients = User.query.filter_by(is_active=True, is_admin=True, is_super_admin=False).all()
+        elif notification_type == 'delivery':
+            recipients = User.query.filter_by(is_active=True, is_delivery=True).all()
+        elif notification_type == 'customer':
+            recipients = User.query.filter_by(is_active=True, is_admin=False, is_delivery=False, is_super_admin=False).all()
+        else:
+            recipients = []
+        
+        for user in recipients:
+            recipient = NotificationRecipient(
+                notification_id=notification.id,
+                user_id=user.id
+            )
+            db.session.add(recipient)
+        
+        notification.is_sent = True
+        db.session.commit()
+        
+        flash(f'✅ Notificación enviada a {len(recipients)} usuario(s).', 'success')
+        return redirect(url_for('super_admin.notifications_list'))
+    
+    return render_template('super_admin/create_notification.html')
+
+
+@super_admin_bp.route('/notifications/<int:notification_id>')
+@login_required
+@super_admin_required
+def view_notification(notification_id):
+    """Ver detalles de una notificación"""
+    notification = Notification.query.get_or_404(notification_id)
+    return render_template('super_admin/view_notification.html', notification=notification)
+
+
+@main_bp.route('/mis-notificaciones')
+@login_required
+def my_notifications():
+    """Usuario ve sus notificaciones"""
+    recipients = NotificationRecipient.query.filter_by(user_id=current_user.id)\
+        .join(Notification)\
+        .order_by(Notification.created_at.desc()).all()
+    
+    for recipient in recipients:
+        if not recipient.is_read:
+            recipient.is_read = True
+            recipient.read_at = datetime.now(timezone.utc)
+    
+    db.session.commit()
+    
+    return render_template('user_notifications.html', recipients=recipients)
+
+
+@main_bp.route('/notificacion/<int:notification_id>')
+@login_required
+def view_user_notification(notification_id):
+    """Usuario lee una notificación específica"""
+    notification = Notification.query.get_or_404(notification_id)
+    
+    recipient = NotificationRecipient.query.filter_by(
+        notification_id=notification_id,
+        user_id=current_user.id
+    ).first()
+    
+    if not recipient:
+        flash('❌ No tienes permiso para ver esta notificación.', 'danger')
+        return redirect(url_for('main.my_notifications'))
+    
+    if not recipient.is_read:
+        recipient.is_read = True
+        recipient.read_at = datetime.now(timezone.utc)
+        db.session.commit()
+    
+    return render_template('view_notification_user.html', notification=notification)

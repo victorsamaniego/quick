@@ -2,221 +2,250 @@
 {% block title %}Super Admin - QuickGo{% endblock %}
 
 {% block content %}
-<div class="container-fluid">
+<div class="container-fluid py-4">
     <!-- Header -->
     <div class="row mb-4">
         <div class="col-12">
-            <h1 class="fw-bold">👑 Panel Super Admin</h1>
+            <h1 class="fw-bold mb-2"><i class="bi bi-crown text-warning"></i> Panel Super Admin</h1>
             <p class="text-muted">Control total del ecosistema QuickGo</p>
         </div>
     </div>
-
+    
     <!-- Tarjetas de Estadísticas -->
     <div class="row g-3 mb-4">
         <div class="col-md-3">
-            <div class="card border-0 shadow-sm bg-primary text-white">
+            <div class="card border-0 shadow-sm">
                 <div class="card-body">
-                    <h6>🏢 Negocios</h6>
-                    <h3>{{ total_businesses }}</h3>
-                    <small>{{ active_businesses }} activos</small>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-1"><i class="bi bi-building"></i> Negocios</h6>
+                            <h3 class="mb-0 fw-bold">{{ total_businesses }}</h3>
+                            <small class="text-success">{{ active_businesses }} activos</small>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
         <div class="col-md-3">
-            <div class="card border-0 shadow-sm bg-success text-white">
+            <div class="card border-0 shadow-sm">
                 <div class="card-body">
-                    <h6>💰 Revenue Total</h6>
-                    <h3>GS {{ "{:,.0f}".format(total_revenue) }}</h3>
-                    <small>Últimos 30 días</small>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-1"><i class="bi bi-currency-dollar"></i> Revenue Total</h6>
+                            <h3 class="mb-0 fw-bold">GS {{ "{:,.0f}".format(total_revenue) }}</h3>
+                            <small class="text-muted">Últimos 30 días</small>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
         <div class="col-md-3">
-            <div class="card border-0 shadow-sm bg-info text-white">
+            <div class="card border-0 shadow-sm">
                 <div class="card-body">
-                    <h6>📦 Pedidos</h6>
-                    <h3>{{ total_orders }}</h3>
-                    <small>Todos los tiempos</small>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-1"><i class="bi bi-box-seam"></i> Pedidos</h6>
+                            <h3 class="mb-0 fw-bold">{{ total_orders }}</h3>
+                            <small class="text-muted">Todos los tiempos</small>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
         <div class="col-md-3">
-            <div class="card border-0 shadow-sm bg-warning text-dark">
+            <div class="card border-0 shadow-sm">
                 <div class="card-body">
-                    <h6>👥 Usuarios</h6>
-                    <h3>{{ total_users }}</h3>
-                    <small>{{ total_deliveries }} deliverys</small>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-1"><i class="bi bi-people"></i> Usuarios</h6>
+                            <h3 class="mb-0 fw-bold">{{ total_users }}</h3>
+                            <small class="text-muted">{{ total_deliveries }} deliverys</small>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-
+    
     <!-- Negocios Más Vendidos -->
     <div class="row mb-4">
         <div class="col-12">
             <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white">
-                    <h5 class="fw-bold mb-0">🏆 Top Negocios (30 días)</h5>
+                <div class="card-header bg-white py-3">
+                    <h5 class="fw-bold mb-0"><i class="bi bi-trophy text-warning"></i> Top Negocios (30 días)</h5>
                 </div>
                 <div class="card-body p-0">
-                    <table class="table table-hover mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Negocio</th>
-                                <th>Revenue</th>
-                                <th>Pedidos</th>
-                                <th>Acción</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for name, slug, business_id, revenue, orders in top_businesses %}
-                            <tr>
-                                <td><strong>{{ name }}</strong></td>
-                                <td>GS {{ "{:,.0f}".format(revenue) }}</td>
-                                <td>{{ orders }}</td>
-                                <td>
-                                    <a href="{{ url_for('super_admin.view_business', business_id=business_id) }}" 
-                                       class="btn btn-sm btn-outline-primary">Ver</a>
-                                </td>
-                            </tr>
-                            {% else %}
-                            <tr>
-                                <td colspan="4" class="text-center text-muted py-4">
-                                    No hay negocios registrados aún
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>NEGOCIO</th>
+                                    <th>REVENUE</th>
+                                    <th>PEDIDOS</th>
+                                    <th>ACCIÓN</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for name, slug, business_id, revenue, orders in top_businesses %}
+                                <tr>
+                                    <td><strong>{{ name }}</strong></td>
+                                    <td>GS {{ "{:,.0f}".format(revenue) }}</td>
+                                    <td>{{ orders }}</td>
+                                    <td>
+                                        <a href="{{ url_for('super_admin.view_business', business_id=business_id) }}"
+                                           class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-eye"></i> Ver
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted py-4">
+                                        <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                                        No hay negocios registrados aún
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-
+    
     <!-- Deliverys Más Activos -->
     <div class="row mb-4">
         <div class="col-12">
             <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white">
-                    <h5 class="fw-bold mb-0">🛵 Top Deliverys</h5>
+                <div class="card-header bg-white py-3">
+                    <h5 class="fw-bold mb-0"><i class="bi bi-bicycle text-info"></i> Top Deliverys</h5>
                 </div>
                 <div class="card-body p-0">
-                    <table class="table table-hover mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Delivery</th>
-                                <th>Negocio</th>
-                                <th>Entregas</th>
-                                <th>Teléfono</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for email, phone, deliveries, business_name in top_deliveries %}
-                            <tr>
-                                <td>{{ email }}</td>
-                                <td>{{ business_name }}</td>
-                                <td><span class="badge bg-success">{{ deliveries }}</span></td>
-                                <td>{{ phone }}</td>
-                            </tr>
-                            {% else %}
-                            <tr>
-                                <td colspan="4" class="text-center text-muted py-4">
-                                    No hay deliverys activos aún
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>DELIVERY</th>
+                                    <th>NEGOCIO</th>
+                                    <th>ENTREGAS</th>
+                                    <th>TELÉFONO</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for email, phone, deliveries, business_name in top_deliveries %}
+                                <tr>
+                                    <td>{{ email }}</td>
+                                    <td>{{ business_name }}</td>
+                                    <td><span class="badge bg-success">{{ deliveries }}</span></td>
+                                    <td>{{ phone }}</td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted py-4">
+                                        <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                                        No hay deliverys activos aún
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-
+    
     <!-- Actividad Reciente -->
     <div class="row">
         <div class="col-md-6">
             <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white">
-                    <h5 class="fw-bold mb-0">📋 Pedidos Recientes</h5>
+                <div class="card-header bg-white py-3">
+                    <h5 class="fw-bold mb-0"><i class="bi bi-clock-history"></i> Pedidos Recientes</h5>
                 </div>
                 <div class="card-body">
                     {% for order in recent_orders %}
-                    <div class="d-flex justify-content-between py-2 border-bottom">
+                    <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
                         <div>
                             <strong>Pedido #{{ order.id }}</strong><br>
                             <small class="text-muted">{{ order.business_name }}</small>
                         </div>
                         <div class="text-end">
                             <span class="badge bg-{{ order.status_color }}">{{ order.status_label }}</span><br>
-                            <small>GS {{ "{:,.0f}".format(order.total_amount) }}</small>
+                            <small class="text-muted">GS {{ "{:,.0f}".format(order.total_amount) }}</small>
                         </div>
                     </div>
                     {% else %}
-                    <p class="text-center text-muted py-4">No hay pedidos recientes</p>
+                    <div class="text-center text-muted py-4">
+                        <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                        No hay pedidos recientes
+                    </div>
                     {% endfor %}
                 </div>
             </div>
         </div>
-        
         <div class="col-md-6">
             <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white">
-                    <h5 class="fw-bold mb-0">🏢 Negocios Nuevos</h5>
+                <div class="card-header bg-white py-3">
+                    <h5 class="fw-bold mb-0"><i class="bi bi-building-add"></i> Negocios Nuevos</h5>
                 </div>
                 <div class="card-body">
                     {% for business in recent_businesses %}
-                    <div class="d-flex justify-content-between py-2 border-bottom">
+                    <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
                         <div>
                             <strong>{{ business.name }}</strong><br>
                             <small class="text-muted">{{ business.created_at.strftime('%d/%m/%Y') }}</small>
                         </div>
                         <div>
                             {% if business.is_active %}
-                            <span class="badge bg-success">Activo</span>
+                                <span class="badge bg-success">Activo</span>
                             {% else %}
-                            <span class="badge bg-danger">Suspendido</span>
+                                <span class="badge bg-danger">Suspendido</span>
                             {% endif %}
                         </div>
                     </div>
                     {% else %}
-                    <p class="text-center text-muted py-4">No hay negocios nuevos</p>
+                    <div class="text-center text-muted py-4">
+                        <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                        No hay negocios nuevos
+                    </div>
                     {% endfor %}
                 </div>
             </div>
         </div>
     </div>
-
+    
     <!-- Menú Rápido -->
     <div class="row mt-4">
         <div class="col-12">
             <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white">
-                    <h5 class="fw-bold mb-0">🔧 Gestión Rápida</h5>
+                <div class="card-header bg-white py-3">
+                    <h5 class="fw-bold mb-0"><i class="bi bi-gear-wide-connected"></i> Gestión Rápida</h5>
                 </div>
                 <div class="card-body">
                     <div class="row g-3">
                         <div class="col-md-3">
-                            <a href="{{ url_for('super_admin.manage_businesses') }}" class="btn btn-outline-primary w-100">
-                                <i class="bi bi-building"></i><br>
-                                Gestionar Negocios
+                            <a href="{{ url_for('super_admin.manage_businesses') }}" class="btn btn-outline-primary w-100 py-3">
+                                <i class="bi bi-building fs-3 d-block mb-2"></i>
+                                <span class="fw-semibold">Gestionar Negocios</span>
                             </a>
                         </div>
                         <div class="col-md-3">
-                            <a href="{{ url_for('super_admin.manage_users') }}" class="btn btn-outline-secondary w-100">
-                                <i class="bi bi-people"></i><br>
-                                Gestionar Usuarios
+                            <a href="{{ url_for('super_admin.manage_users') }}" class="btn btn-outline-secondary w-100 py-3">
+                                <i class="bi bi-people fs-3 d-block mb-2"></i>
+                                <span class="fw-semibold">Gestionar Usuarios</span>
                             </a>
                         </div>
                         <div class="col-md-3">
-                            <a href="{{ url_for('super_admin.analytics') }}" class="btn btn-outline-info w-100">
-                                <i class="bi bi-graph-up"></i><br>
-                                Analytics
+                            <a href="{{ url_for('super_admin.analytics') }}" class="btn btn-outline-info w-100 py-3">
+                                <i class="bi bi-graph-up fs-3 d-block mb-2"></i>
+                                <span class="fw-semibold">Analytics</span>
                             </a>
                         </div>
                         <div class="col-md-3">
-                            <a href="{{ url_for('admin.manage_products') }}" class="btn btn-outline-warning w-100">
-                                <i class="bi bi-box"></i><br>
-                                Ver Productos
+                            <a href="{{ url_for('admin.manage_products') }}" class="btn btn-outline-warning w-100 py-3">
+                                <i class="bi bi-box-seam fs-3 d-block mb-2"></i>
+                                <span class="fw-semibold">Ver Productos</span>
                             </a>
                         </div>
                     </div>

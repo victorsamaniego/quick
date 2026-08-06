@@ -72,13 +72,22 @@
                         <div class="mb-3">
                             <label class="form-label">🖼️ Imagen del Producto</label>
                             <input type="file" name="image" class="form-control" accept="image/*">
+                            
                             {% if product and product.image_url %}
                             <div class="mt-2">
-                                <img src="{{ url_for('static', filename=product.image_url) }}" 
+                                <!-- 🔥 CORREGIDO: Soporta Cloudinary Y archivos locales -->
+                                <img src="{{ product.image_url if product.image_url.startswith('http') else url_for('static', filename=product.image_url) }}" 
                                      alt="{{ product.name }}" 
-                                     class="img-thumbnail" 
-                                     style="max-height: 150px;">
-                                <p class="text-muted small mt-1">Imagen actual</p>
+                                     class="img-thumbnail border-2" 
+                                     style="max-height: 200px;">
+                                <p class="text-muted small mt-1">
+                                    📌 Imagen actual 
+                                    {% if product.image_url.startswith('http') %}
+                                    <span class="badge bg-info">☁️ Cloudinary</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">💾 Local</span>
+                                    {% endif %}
+                                </p>
                             </div>
                             {% endif %}
                         </div>

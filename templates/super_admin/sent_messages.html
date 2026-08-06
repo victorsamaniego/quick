@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Mensajes Enviados{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold"> Mensajes Enviados</h2>
+        <a href="{{ url_for('super_admin.manage_users') }}" class="btn btn-outline-secondary">← Volver a Usuarios</a>
+    </div>
+    
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+            {% if messages %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Destinatario</th>
+                            <th>Asunto</th>
+                            <th>Fecha</th>
+                            <th>Leído</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for msg in messages %}
+                        <tr>
+                            <td>#{{ msg.id }}</td>
+                            <td>
+                                <strong>{{ msg.recipient.display_name }}</strong><br>
+                                <small class="text-muted">{{ msg.recipient.email }}</small>
+                            </td>
+                            <td>{{ msg.subject }}</td>
+                            <td>{{ msg.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+                            <td>
+                                {% if msg.is_read %}
+                                    <span class="badge bg-success">✅ Leído</span>
+                                {% else %}
+                                    <span class="badge bg-warning">⏳ Pendiente</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-center text-muted py-4">No enviaste ningún mensaje aún.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

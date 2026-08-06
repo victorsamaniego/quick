@@ -13,22 +13,9 @@
     transition: all 0.3s ease;
     background: #f8f9fa;
 }
-
-.password-requirement.valid {
-    background: #d4edda;
-    color: #155724;
-}
-
-.password-requirement.invalid {
-    background: #f8d7da;
-    color: #721c24;
-}
-
-.password-requirement i {
-    margin-right: 8px;
-    font-size: 1rem;
-}
-
+.password-requirement.valid { background: #d4edda; color: #155724; }
+.password-requirement.invalid { background: #f8d7da; color: #721c24; }
+.password-requirement i { margin-right: 8px; font-size: 1rem; }
 .username-status {
     font-size: 0.85rem;
     margin-top: 5px;
@@ -36,19 +23,8 @@
     border-radius: 5px;
     display: none;
 }
-
-.username-status.available {
-    background: #d4edda;
-    color: #155724;
-    display: block;
-}
-
-.username-status.unavailable {
-    background: #f8d7da;
-    color: #721c24;
-    display: block;
-}
-
+.username-status.available { background: #d4edda; color: #155724; display: block; }
+.username-status.unavailable { background: #f8d7da; color: #721c24; display: block; }
 .password-strength-bar {
     height: 5px;
     border-radius: 3px;
@@ -57,12 +33,7 @@
     background: #e9ecef;
     overflow: hidden;
 }
-
-.password-strength-fill {
-    height: 100%;
-    transition: all 0.3s ease;
-    width: 0%;
-}
+.password-strength-fill { height: 100%; transition: all 0.3s ease; width: 0%; }
 </style>
 {% endblock %}
 
@@ -77,7 +48,16 @@
                     <form method="POST" id="registerForm">
                         {{ form.hidden_tag() }}
                         
-                        <!-- 🔥 USERNAME -->
+                        <!-- 🔥 NUEVO: TIPO DE CUENTA -->
+                        <div class="mb-3">
+                            {{ form.account_type.label(class="form-label fw-semibold") }}
+                            {{ form.account_type(class="form-select") }}
+                            <small class="text-muted">
+                                <i class="bi bi-info-circle"></i> Si elegís "Comerciante", tu cuenta quedará pendiente de aprobación por el Super Admin.
+                            </small>
+                        </div>
+                        
+                        <!-- USERNAME -->
                         <div class="mb-3">
                             {{ form.username.label(class="form-label fw-semibold") }}
                             <div class="input-group">
@@ -115,7 +95,7 @@
                             {% endfor %}
                         </div>
                         
-                        <!-- 🔥 CONTRASEÑA CON VALIDACIÓN EN TIEMPO REAL -->
+                        <!-- CONTRASEÑA -->
                         <div class="mb-3">
                             {{ form.password.label(class="form-label fw-semibold") }}
                             <div class="input-group">
@@ -126,32 +106,25 @@
                                 </button>
                             </div>
                             
-                            <!-- Barra de fortaleza -->
                             <div class="password-strength-bar">
                                 <div class="password-strength-fill" id="strengthFill"></div>
                             </div>
                             
-                            <!-- 🔥 REQUISITOS VISUALES -->
                             <div class="mt-3" id="passwordRequirements">
                                 <div class="password-requirement invalid" id="req-length">
-                                    <i class="bi bi-x-circle"></i>
-                                    <span>Mínimo 8 caracteres</span>
+                                    <i class="bi bi-x-circle"></i><span>Mínimo 8 caracteres</span>
                                 </div>
                                 <div class="password-requirement invalid" id="req-uppercase">
-                                    <i class="bi bi-x-circle"></i>
-                                    <span>Al menos una MAYÚSCULA (A-Z)</span>
+                                    <i class="bi bi-x-circle"></i><span>Al menos una MAYÚSCULA (A-Z)</span>
                                 </div>
                                 <div class="password-requirement invalid" id="req-lowercase">
-                                    <i class="bi bi-x-circle"></i>
-                                    <span>Al menos una minúscula (a-z)</span>
+                                    <i class="bi bi-x-circle"></i><span>Al menos una minúscula (a-z)</span>
                                 </div>
                                 <div class="password-requirement invalid" id="req-number">
-                                    <i class="bi bi-x-circle"></i>
-                                    <span>Al menos un número (0-9)</span>
+                                    <i class="bi bi-x-circle"></i><span>Al menos un número (0-9)</span>
                                 </div>
                                 <div class="password-requirement invalid" id="req-special">
-                                    <i class="bi bi-x-circle"></i>
-                                    <span>Al menos un signo (!@#$%^&*)</span>
+                                    <i class="bi bi-x-circle"></i><span>Al menos un signo (!@#$%^&*)</span>
                                 </div>
                             </div>
                             
@@ -175,13 +148,10 @@
                         
                         <hr class="my-4">
                         
-                        <!-- 🔥 PREGUNTA DE SEGURIDAD -->
+                        <!-- PREGUNTA DE SEGURIDAD -->
                         <div class="mb-3">
                             <h5 class="fw-bold mb-3">🔐 Pregunta de Seguridad</h5>
-                            <p class="text-muted small">
-                                Esta pregunta te ayudará a recuperar tu cuenta si olvidás tu contraseña.
-                                <strong>Elegí una pregunta diferente a las demás</strong> para mayor seguridad.
-                            </p>
+                            <p class="text-muted small">Esta pregunta te ayudará a recuperar tu cuenta si olvidás tu contraseña.</p>
                             
                             {{ form.security_question_id.label(class="form-label fw-semibold") }}
                             {{ form.security_question_id(class="form-select") }}
@@ -196,9 +166,7 @@
                                 <span class="input-group-text"><i class="bi bi-shield-lock"></i></span>
                                 {{ form.security_answer(class="form-control", placeholder="Tu respuesta secreta", id="securityAnswer") }}
                             </div>
-                            <small class="text-muted">
-                                <i class="bi bi-info-circle"></i> Recordá bien tu respuesta, la vas a necesitar para recuperar tu cuenta.
-                            </small>
+                            <small class="text-muted"><i class="bi bi-info-circle"></i> Recordá bien tu respuesta.</small>
                             {% for error in form.security_answer.errors %}
                             <div class="text-danger small">{{ error }}</div>
                             {% endfor %}
@@ -227,11 +195,23 @@ let passwordValid = false;
 let passwordsMatch = false;
 let usernameTimeout = null;
 
-// 🔥 VALIDACIÓN DE USERNAME EN TIEMPO REAL
+// 🔥 FUNCIÓN DEBOUNCE: Evita que se envíen peticiones con cada tecla presionada
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// Validación de nombre de usuario (ya tenía un timeout, pero lo mantenemos limpio)
 document.getElementById('usernameInput').addEventListener('input', function(e) {
     const username = e.target.value.trim();
     const statusDiv = document.getElementById('usernameStatus');
-    
     clearTimeout(usernameTimeout);
     
     if (username.length < 3) {
@@ -241,14 +221,12 @@ document.getElementById('usernameInput').addEventListener('input', function(e) {
         return;
     }
     
-    // Mostrar "verificando..."
     statusDiv.className = 'username-status';
     statusDiv.style.display = 'block';
     statusDiv.style.background = '#fff3cd';
     statusDiv.style.color = '#856404';
     statusDiv.innerHTML = '<i class="bi bi-hourglass-split"></i> Verificando...';
     
-    // Esperar 500ms antes de hacer la petición
     usernameTimeout = setTimeout(() => {
         fetch('/api/check-username', {
             method: 'POST',
@@ -276,37 +254,59 @@ document.getElementById('usernameInput').addEventListener('input', function(e) {
     }, 500);
 });
 
-// 🔥 VALIDACIÓN DE CONTRASEÑA EN TIEMPO REAL
-document.getElementById('passwordInput').addEventListener('input', function(e) {
+// 🔥 VALIDACIÓN DE CONTRASEÑA CON DEBOUNCE DE 500ms
+const validatePassword = debounce(function(e) {
     const password = e.target.value;
     
+    // Si está vacío, reseteamos todo visualmente
+    if (!password) {
+        updateRequirement('req-length', false);
+        updateRequirement('req-uppercase', false);
+        updateRequirement('req-lowercase', false);
+        updateRequirement('req-number', false);
+        updateRequirement('req-special', false);
+        updateStrengthBar(0);
+        passwordValid = false;
+        updateSubmitButton();
+        checkPasswordMatch();
+        return;
+    }
+
     fetch('/api/validate-password', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({password: password})
     })
-    .then(response => response.json())
+    .then(response => {
+        // Si el servidor responde con 429 (Too Many Requests), ignoramos y esperamos
+        if (response.status === 429) {
+            console.warn('⚠️ Demasiadas peticiones. Espera un momento antes de seguir escribiendo.');
+            return null;
+        }
+        return response.json();
+    })
     .then(data => {
-        // Actualizar cada requisito
+        if (!data) return; // Salir si fue bloqueado por rate limit
+        
         updateRequirement('req-length', data.length);
         updateRequirement('req-uppercase', data.uppercase);
         updateRequirement('req-lowercase', data.lowercase);
         updateRequirement('req-number', data.number);
         updateRequirement('req-special', data.special);
         
-        // Actualizar barra de fortaleza
         const strength = calculateStrength(data);
         updateStrengthBar(strength);
         
         passwordValid = data.valid;
         updateSubmitButton();
-        
-        // Verificar coincidencia
         checkPasswordMatch();
+    })
+    .catch(err => {
+        console.error('Error validando contraseña:', err);
     });
-});
+}, 500); // Espera 500ms después de la última tecla presionada
 
-// 🔥 CONFIRMAR CONTRASEÑA
+document.getElementById('passwordInput').addEventListener('input', validatePassword);
 document.getElementById('confirmPasswordInput').addEventListener('input', checkPasswordMatch);
 
 function checkPasswordMatch() {
@@ -328,14 +328,12 @@ function checkPasswordMatch() {
         matchDiv.innerHTML = '<small class="text-danger"><i class="bi bi-x-circle"></i> Las contraseñas NO coinciden</small>';
         passwordsMatch = false;
     }
-    
     updateSubmitButton();
 }
 
 function updateRequirement(id, isValid) {
     const element = document.getElementById(id);
     const icon = element.querySelector('i');
-    
     if (isValid) {
         element.className = 'password-requirement valid';
         icon.className = 'bi bi-check-circle-fill';
@@ -358,30 +356,23 @@ function calculateStrength(data) {
 function updateStrengthBar(strength) {
     const fill = document.getElementById('strengthFill');
     const percentage = (strength / 5) * 100;
-    
     fill.style.width = percentage + '%';
     
-    if (strength <= 2) {
-        fill.style.background = '#dc3545'; // Rojo
-    } else if (strength <= 3) {
-        fill.style.background = '#ffc107'; // Amarillo
-    } else if (strength <= 4) {
-        fill.style.background = '#17a2b8'; // Azul
-    } else {
-        fill.style.background = '#28a745'; // Verde
-    }
+    if (strength <= 2) fill.style.background = '#dc3545';
+    else if (strength <= 3) fill.style.background = '#ffc107';
+    else if (strength <= 4) fill.style.background = '#17a2b8';
+    else fill.style.background = '#28a745';
 }
 
 function updateSubmitButton() {
     const submitBtn = document.getElementById('submitBtn');
+    // El botón solo se habilita si el usuario está disponible, la contraseña es válida y coinciden
     submitBtn.disabled = !(usernameAvailable && passwordValid && passwordsMatch);
 }
 
-// 🔥 TOGGLE VER CONTRASEÑA
 document.getElementById('togglePassword').addEventListener('click', function() {
     const passwordInput = document.getElementById('passwordInput');
     const icon = this.querySelector('i');
-    
     if (passwordInput.type === 'password') {
         passwordInput.type = 'text';
         icon.className = 'bi bi-eye-slash';

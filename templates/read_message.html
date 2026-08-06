@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{{ message.subject }}{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <a href="{{ url_for('main.my_messages') }}" class="btn btn-outline-secondary mb-3">← Volver a Mensajes</a>
+            
+            <div class="card border-0 shadow-lg">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">{{ message.subject }}</h4>
+                </div>
+                <div class="card-body p-4">
+                    <div class="mb-3">
+                        <strong>De:</strong> {{ message.sender.display_name }}<br>
+                        <strong>Fecha:</strong> {{ message.created_at.strftime('%d/%m/%Y %H:%M') }}
+                    </div>
+                    <hr>
+                    <div class="message-content" style="white-space: pre-wrap; font-size: 1.1rem;">
+                        {{ message.message }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

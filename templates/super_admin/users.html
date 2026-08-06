@@ -9,7 +9,7 @@
             <p class="text-muted">Administra todos los usuarios del sistema</p>
         </div>
     </div>
-
+    
     <div class="row">
         <div class="col-12">
             <div class="card border-0 shadow-sm">
@@ -37,41 +37,49 @@
                                     <td>{{ user.business_name or '<span class="text-muted">-</span>' }}</td>
                                     <td>
                                         {% if user.is_super_admin %}
-                                        <span class="badge bg-danger">👑 Super Admin</span>
+                                            <span class="badge bg-danger">👑 Super Admin</span>
                                         {% elif user.is_admin %}
-                                        <span class="badge bg-warning text-dark">👤 Admin</span>
+                                            <span class="badge bg-warning text-dark">👤 Admin</span>
                                         {% elif user.is_delivery %}
-                                        <span class="badge bg-info">🛵 Delivery</span>
+                                            <span class="badge bg-info"> Delivery</span>
                                         {% else %}
-                                        <span class="badge bg-secondary">👤 Cliente</span>
+                                            <span class="badge bg-secondary"> Cliente</span>
                                         {% endif %}
                                     </td>
                                     <td>
                                         {% if user.is_active %}
-                                        <span class="badge bg-success">Activo</span>
+                                            <span class="badge bg-success">Activo</span>
                                         {% else %}
-                                        <span class="badge bg-danger">Inactivo</span>
+                                            <span class="badge bg-danger">Inactivo</span>
                                         {% endif %}
                                     </td>
                                     <td>{{ user.created_at.strftime('%d/%m/%Y') }}</td>
                                     <td>
                                         <div class="btn-group btn-group-sm" role="group">
                                             <!-- ✏️ EDITAR -->
-                                            <a href="{{ url_for('super_admin.edit_user', user_id=user.id) }}" 
+                                            <a href="{{ url_for('super_admin.edit_user', user_id=user.id) }}"
                                                class="btn btn-outline-primary" title="Editar Usuario">
                                                 ✏️
                                             </a>
                                             
+                                            <!-- 📧 ENVIAR MENSAJE -->
+                                            <a href="{{ url_for('super_admin.send_message_to_user', user_id=user.id) }}"
+                                               class="btn btn-outline-success" title="Enviar Mensaje">
+                                                📧
+                                            </a>
+                                            
                                             <!-- 🔄 RESET PASSWORD -->
-                                            <form action="{{ url_for('super_admin.reset_user_password', user_id=user.id) }}" method="POST" style="display:inline;">
+                                            <form action="{{ url_for('super_admin.reset_user_password', user_id=user.id) }}" 
+                                                  method="POST" style="display:inline;">
                                                 <button type="submit" class="btn btn-outline-warning" title="Resetear Contraseña"
                                                         onclick="return confirm('¿Resetear contraseña de {{ user.email }}? Se generará una nueva temporal.')">
                                                     🔄
                                                 </button>
                                             </form>
-
+                                            
                                             <!-- 🗑️ ELIMINAR -->
-                                            <form action="{{ url_for('super_admin.delete_user', user_id=user.id) }}" method="POST" style="display:inline;"
+                                            <form action="{{ url_for('super_admin.delete_user', user_id=user.id) }}" 
+                                                  method="POST" style="display:inline;"
                                                   onsubmit="return confirm('⚠️ ¿Estás seguro de eliminar a este usuario? Esta acción no se puede deshacer.');">
                                                 <button type="submit" class="btn btn-outline-danger" title="Eliminar Usuario">
                                                     🗑️

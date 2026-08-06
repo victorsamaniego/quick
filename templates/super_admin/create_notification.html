@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Nueva Notificación Masiva{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card border-0 shadow-lg">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">📢 Nueva Notificación Masiva</h4>
+                </div>
+                <div class="card-body p-4">
+                    <form method="POST">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Tipo de Destinatarios</label>
+                            <select name="notification_type" class="form-select" required>
+                                <option value="all">👥 Todos los usuarios</option>
+                                <option value="business">🏪 Solo Comerciantes</option>
+                                <option value="delivery"> Solo Deliverys</option>
+                                <option value="customer">🛒 Solo Compradores</option>
+                            </select>
+                            <small class="text-muted">Selecciona a quién va dirigida la notificación</small>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Título</label>
+                            <input type="text" name="title" class="form-control" placeholder="Ej: Mantenimiento programado" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Mensaje</label>
+                            <textarea name="message" class="form-control" rows="6" placeholder="Escribí el contenido de la notificación..." required></textarea>
+                        </div>
+                        
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i> 
+                            La notificación se enviará a todos los usuarios del tipo seleccionado y aparecerá en su panel de notificaciones.
+                        </div>
+                        
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                📤 Enviar Notificación
+                            </button>
+                            <a href="{{ url_for('super_admin.notifications_list') }}" class="btn btn-secondary">
+                                ← Cancelar
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

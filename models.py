@@ -7,38 +7,31 @@ import string
 
 db = SQLAlchemy()
 
-
 class User(UserMixin, db.Model):
     __tablename__ = 'users'
-    
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     email = db.Column(db.String(120), unique=True, nullable=False, index=True)
     username = db.Column(db.String(80), unique=True, nullable=True, index=True)
     password_hash = db.Column(db.String(255), nullable=False)
     phone = db.Column(db.String(20), nullable=False)
-    
     security_question_id = db.Column(db.Integer, db.ForeignKey('security_questions.id'), nullable=True)
     security_answer_hash = db.Column(db.String(255), nullable=True)
-    
     is_active = db.Column(db.Boolean, default=True)
     is_admin = db.Column(db.Boolean, default=False)
     is_super_admin = db.Column(db.Boolean, default=False)
     is_delivery = db.Column(db.Boolean, default=False)
-    
     business_id = db.Column(db.Integer, db.ForeignKey('businesses.id'), nullable=True)
-    
     theme_color = db.Column(db.String(20), default='gold')
     latitude = db.Column(db.Float)
     longitude = db.Column(db.Float)
-    
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     
     security_question = db.relationship('SecurityQuestion', foreign_keys=[security_question_id], lazy=True)
-    
     orders = db.relationship('Order', backref='customer', lazy=True, foreign_keys='Order.user_id')
     delivery_orders = db.relationship('Order', backref='driver', lazy=True, foreign_keys='Order.delivery_driver_id')
     otp_codes = db.relationship('OTPCode', backref='user', lazy=True, cascade='all, delete-orphan')
     business = db.relationship('Business', back_populates='admin_user', lazy=True)
+    received_notifications = db.relationship('NotificationRecipient', foreign_keys='NotificationRecipient.user_id', lazy=True)
     
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -88,52 +81,38 @@ class User(UserMixin, db.Model):
     @staticmethod
     def find_nearby_deliveries(latitude, longitude, radius_km, business_id=None):
         from math import radians, sin, cos, sqrt, atan2
-        
         query = User.query.filter_by(is_delivery=True, is_active=True)
-        
         active_delivery_ids = db.session.query(Order.delivery_driver_id).filter(
             Order.status.in_(['pending', 'shipped'])
         ).all()
         active_delivery_ids = [id[0] for id in active_delivery_ids if id[0]]
-        
         if active_delivery_ids:
             query = query.filter(~User.id.in_(active_delivery_ids))
-        
         deliveries = query.all()
-        
         nearby_deliveries = []
         R = 6371
-        
         for delivery in deliveries:
             if delivery.latitude and delivery.longitude:
                 lat1, lon1 = radians(latitude), radians(longitude)
                 lat2, lon2 = radians(delivery.latitude), radians(delivery.longitude)
-                
                 dlat = lat2 - lat1
                 dlon = lon2 - lon1
-                
                 a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
                 c = 2 * atan2(sqrt(a), sqrt(1-a))
-                
                 distance = R * c
-                
                 if distance <= radius_km:
                     nearby_deliveries.append({
                         'delivery': delivery,
                         'distance': round(distance, 2)
                     })
-        
         nearby_deliveries.sort(key=lambda x: x['distance'])
-        
         return nearby_deliveries
     
     def __repr__(self):
         return f'<User {self.username or self.email}>'
 
-
 class SecurityQuestion(db.Model):
     __tablename__ = 'security_questions'
-    
     id = db.Column(db.Integer, primary_key=True)
     question = db.Column(db.String(200), nullable=False, unique=True)
     is_active = db.Column(db.Boolean, default=True)
@@ -176,7 +155,6 @@ class SecurityQuestion(db.Model):
             "¿Cuál es tu libro favorito?",
             "¿Cuál es el nombre de tu abuelo/a materno/a?"
         ]
-        
         created_count = 0
         for q in default_questions:
             existing = SecurityQuestion.query.filter_by(question=q).first()
@@ -184,46 +162,36 @@ class SecurityQuestion(db.Model):
                 new_q = SecurityQuestion(question=q)
                 db.session.add(new_q)
                 created_count += 1
-        
         db.session.commit()
         return created_count
 
-
 class Business(db.Model):
     __tablename__ = 'businesses'
-    
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     name = db.Column(db.String(100), nullable=False)
     slug = db.Column(db.String(100), unique=True, nullable=False, index=True)
     description = db.Column(db.Text, nullable=True)
-    logo_url = db.Column(db.String(255), nullable=True)
+    logo_url = db.Column(db.String(500), nullable=True)  # 🔥 CAMBIADO a 500
     phone = db.Column(db.String(20))
     address = db.Column(db.String(255))
-    
     latitude = db.Column(db.Float, nullable=True)
     longitude = db.Column(db.Float, nullable=True)
     delivery_radius_km = db.Column(db.Float, default=10.0)
-    
-    # 🔥 NUEVOS CAMPOS PARA SUSCRIPCIÓN ELEGIBLE
     requires_subscription = db.Column(db.Boolean, default=True)
     subscription_exempt_reason = db.Column(db.String(200), nullable=True)
-    
     is_active = db.Column(db.Boolean, default=True)
     commission_rate = db.Column(db.Float, default=0.10)
     delivery_fee_base = db.Column(db.Float, default=5000)
     delivery_fee_per_km = db.Column(db.Float, default=1000)
-    
     total_sales = db.Column(db.Float, default=0)
     total_orders = db.Column(db.Integer, default=0)
     total_products = db.Column(db.Integer, default=0)
-    
     monthly_fee = db.Column(db.Float, default=0.0)
     billing_start = db.Column(db.Date, nullable=True)
     billing_end = db.Column(db.Date, nullable=True)
     subscription_status = db.Column(db.String(20), default='pending')
     activation_code = db.Column(db.String(50), nullable=True)
     code_expires_at = db.Column(db.DateTime, nullable=True)
-    
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
@@ -231,13 +199,12 @@ class Business(db.Model):
     products = db.relationship('Product', lazy=True, cascade='all, delete-orphan')
     orders = db.relationship('Order', lazy=True)
     categories = db.relationship('Category', lazy=True)
-    delivery_drivers = db.relationship('User', lazy=True, 
-                                       primaryjoin="and_(User.business_id==Business.id, User.is_delivery==True)",
-                                       overlaps="business")
+    delivery_drivers = db.relationship('User', lazy=True,
+                                      primaryjoin="and_(User.business_id==Business.id, User.is_delivery==True)",
+                                      overlaps="business")
     
     @property
     def revenue_last_30_days(self):
-        from datetime import timedelta
         thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
         result = db.session.query(db.func.sum(Order.total_amount)).filter(
             Order.business_id == self.id,
@@ -248,7 +215,6 @@ class Business(db.Model):
     
     @property
     def orders_last_30_days(self):
-        from datetime import timedelta
         thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
         return Order.query.filter(
             Order.business_id == self.id,
@@ -266,10 +232,8 @@ class Business(db.Model):
     def __repr__(self):
         return f'<Business {self.name}>'
 
-
 class OTPCode(db.Model):
     __tablename__ = 'otp_codes'
-    
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     code = db.Column(db.String(6), nullable=False)
@@ -282,16 +246,13 @@ class OTPCode(db.Model):
         return ''.join(random.choices(string.digits, k=6))
     
     def is_expired(self, expiry_minutes=10):
-        from datetime import timedelta
         return datetime.now(timezone.utc) > self.created_at + timedelta(minutes=expiry_minutes)
     
     def __repr__(self):
         return f'<OTPCode {self.code} for user {self.user_id}>'
 
-
 class Category(db.Model):
     __tablename__ = 'categories'
-    
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text)
@@ -307,21 +268,17 @@ class Category(db.Model):
     def __repr__(self):
         return f'<Category {self.name}>'
 
-
 class Product(db.Model):
     __tablename__ = 'products'
-    
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     name = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text)
     precio_compra = db.Column(db.Float, nullable=False, default=0)
     price = db.Column(db.Float, nullable=False)
     stock = db.Column(db.Integer, default=0)
-    
     category_id = db.Column(db.Integer, db.ForeignKey('categories.id'))
     business_id = db.Column(db.Integer, db.ForeignKey('businesses.id'), nullable=False, index=True)
-    
-    image_url = db.Column(db.String(255))
+    image_url = db.Column(db.String(500))  # 🔥 CAMBIADO a 500
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
@@ -386,10 +343,8 @@ class Product(db.Model):
     def __repr__(self):
         return f'<Product {self.name}>'
 
-
 class OrderItem(db.Model):
     __tablename__ = 'order_items'
-    
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), nullable=False)
     product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=True)
@@ -413,36 +368,30 @@ class OrderItem(db.Model):
     def __repr__(self):
         return f'<OrderItem {self.quantity}x {self.product_name or self.product_id}>'
 
-
 class Order(db.Model):
     __tablename__ = 'orders'
-    
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     business_id = db.Column(db.Integer, db.ForeignKey('businesses.id'), nullable=False, index=True)
     delivery_driver_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
-    
     status = db.Column(db.String(20), default='pending')
     total_amount = db.Column(db.Float, nullable=False)
     shipping_address = db.Column(db.String(500), nullable=False)
     shipping_phone = db.Column(db.String(20), nullable=False)
     shipping_reference = db.Column(db.String(200))
-    
     client_latitude = db.Column(db.Float)
     client_longitude = db.Column(db.Float)
     delivery_latitude = db.Column(db.Float)
     delivery_longitude = db.Column(db.Float)
     delivery_fee = db.Column(db.Float, default=0)
     driver_arrived = db.Column(db.Boolean, default=False)
-    
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     delivered_at = db.Column(db.DateTime)
-
     payment_method = db.Column(db.String(20), default='cash')
     cash_bill_amount = db.Column(db.Float, default=0.0)
     needs_change = db.Column(db.Boolean, default=False)
-    payment_receipt_url = db.Column(db.String(255), nullable=True)
+    payment_receipt_url = db.Column(db.String(500), nullable=True)  # 🔥 CAMBIADO a 500
     
     @property
     def items_list(self):
@@ -521,15 +470,12 @@ class Order(db.Model):
     def __repr__(self):
         return f'<Order #{self.id} - {self.status}>'
 
-
 class DeliveryRequest(db.Model):
     __tablename__ = 'delivery_requests'
-    
     id = db.Column(db.Integer, primary_key=True)
     order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), nullable=False)
     business_id = db.Column(db.Integer, db.ForeignKey('businesses.id'), nullable=False)
     driver_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
-    
     status = db.Column(db.String(20), default='pending')
     search_radius = db.Column(db.Float, nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
@@ -568,10 +514,8 @@ class DeliveryRequest(db.Model):
     def __repr__(self):
         return f'<DeliveryRequest #{self.id} - {self.status}>'
 
-
 class ChatMessage(db.Model):
     __tablename__ = 'chat_messages'
-    
     id = db.Column(db.Integer, primary_key=True)
     order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), nullable=False)
     sender_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
@@ -584,7 +528,6 @@ class ChatMessage(db.Model):
     
     def to_dict(self):
         sender_role = 'customer'
-        
         if self.order:
             if self.sender_id == self.order.user_id:
                 sender_role = 'customer'
@@ -596,12 +539,10 @@ class ChatMessage(db.Model):
                 sender_role = 'business'
         
         py_timezone = timezone(timedelta(hours=-3))
-        
         if self.created_at.tzinfo is None:
             created_at_utc = self.created_at.replace(tzinfo=timezone.utc)
         else:
             created_at_utc = self.created_at.astimezone(timezone.utc)
-        
         local_time = created_at_utc.astimezone(py_timezone)
         
         return {
@@ -620,11 +561,8 @@ class ChatMessage(db.Model):
     def __repr__(self):
         return f'<ChatMessage #{self.id} - Order {self.order_id}>'
 
-
-# 🔥 NUEVO: Chat de soporte entre comerciante y Super Admin
 class SupportChat(db.Model):
     __tablename__ = 'support_chats'
-    
     id = db.Column(db.Integer, primary_key=True)
     business_id = db.Column(db.Integer, db.ForeignKey('businesses.id'), nullable=False)
     sender_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
@@ -648,11 +586,8 @@ class SupportChat(db.Model):
             'is_read': self.is_read
         }
 
-
-# 🔥 NUEVO: Chat entre delivery y negocio
 class DeliveryBusinessChat(db.Model):
     __tablename__ = 'delivery_business_chats'
-    
     id = db.Column(db.Integer, primary_key=True)
     order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), nullable=False)
     sender_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
@@ -673,3 +608,48 @@ class DeliveryBusinessChat(db.Model):
             'created_at': self.created_at.strftime('%H:%M'),
             'is_read': self.is_read
         }
+
+class UserMessage(db.Model):
+    __tablename__ = 'user_messages'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    sender_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    recipient_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    subject = db.Column(db.String(200), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    is_read = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    
+    sender = db.relationship('User', foreign_keys=[sender_id], lazy=True)
+    recipient = db.relationship('User', foreign_keys=[recipient_id], lazy=True, backref='received_messages')
+    
+    def __repr__(self):
+        return f'<UserMessage {self.id} - Para {self.recipient_id}>'
+
+class Notification(db.Model):
+    __tablename__ = 'notifications'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    title = db.Column(db.String(200), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    notification_type = db.Column(db.String(50), nullable=False)
+    sent_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    is_sent = db.Column(db.Boolean, default=False)
+    
+    sender = db.relationship('User', foreign_keys=[sent_by], lazy=True)
+    recipients = db.relationship('NotificationRecipient', backref='notification', lazy=True, cascade='all, delete-orphan')
+    
+    def __repr__(self):
+        return f'<Notification {self.title}>'
+
+class NotificationRecipient(db.Model):
+    __tablename__ = 'notification_recipients'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    notification_id = db.Column(db.Integer, db.ForeignKey('notifications.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    is_read = db.Column(db.Boolean, default=False)
+    read_at = db.Column(db.DateTime, nullable=True)
+    
+    user = db.relationship('User', lazy=True)
+    
+    def __repr__(self):
+        return f'<NotificationRecipient {self.user_id}>'

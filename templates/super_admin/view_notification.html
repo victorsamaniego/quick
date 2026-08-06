@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}{{ notification.title }}{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-10">
+            <a href="{{ url_for('super_admin.notifications_list') }}" class="btn btn-outline-secondary mb-3">
+                ← Volver a notificaciones
+            </a>
+            
+            <div class="card border-0 shadow-lg">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">{{ notification.title }}</h4>
+                </div>
+                <div class="card-body p-4">
+                    <div class="mb-3">
+                        <strong>Tipo:</strong>
+                        {% if notification.notification_type == 'all' %}
+                            <span class="badge bg-primary">👥 Todos los usuarios</span>
+                        {% elif notification.notification_type == 'business' %}
+                            <span class="badge bg-warning text-dark">🏪 Comerciantes</span>
+                        {% elif notification.notification_type == 'delivery' %}
+                            <span class="badge bg-info">🛵 Deliverys</span>
+                        {% elif notification.notification_type == 'customer' %}
+                            <span class="badge bg-success">🛒 Compradores</span>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <strong>Fecha:</strong> {{ notification.created_at.strftime('%d/%m/%Y %H:%M') }}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <strong>Destinatarios:</strong> {{ notification.recipients|length }} usuarios
+                    </div>
+                    
+                    <hr>
+                    
+                    <div class="message-content" style="white-space: pre-wrap; font-size: 1.1rem;">
+                        {{ notification.message }}
+                    </div>
+                    
+                    <hr>
+                    
+                    <h5>Lista de Destinatarios ({{ notification.recipients|length }})</h5>
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Usuario</th>
+                                    <th>Email</th>
+                                    <th>Leído</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for recipient in notification.recipients[:20] %}
+                                <tr>
+                                    <td>{{ recipient.user.display_name }}</td>
+                                    <td>{{ recipient.user.email }}</td>
+                                    <td>
+                                        {% if recipient.is_read %}
+                                            <span class="badge bg-success">✅</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">⏳</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                                {% if notification.recipients|length > 20 %}
+                                <tr>
+                                    <td colspan="3" class="text-muted">
+                                        ... y {{ notification.recipients|length - 20 }} más
+                                    </td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
