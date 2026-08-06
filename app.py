@@ -1,4 +1,4 @@
-from flask import Flask, session, render_template, request, current_app, jsonify
+from flask import Flask, session, render_template, request, current_app, jsonify, url_for
 from flask_mail import Mail
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from flask_login import LoginManager, current_user
@@ -18,12 +18,16 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ============ CONFIGURACIÓN DE CLOUDINARY ============
-cloudinary.config(
-    cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
-    api_key=os.getenv('CLOUDINARY_API_KEY'),
-    api_secret=os.getenv('CLOUDINARY_API_SECRET'),
-    secure=True
-)
+try:
+    cloudinary.config(
+        cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
+        api_key=os.getenv('CLOUDINARY_API_KEY'),
+        api_secret=os.getenv('CLOUDINARY_API_SECRET'),
+        secure=True
+    )
+    print("✅ Cloudinary configurado correctamente")
+except Exception as e:
+    print(f"⚠️ Error configurando Cloudinary: {e}")
 
 # ============ LOGGING DE SEGURIDAD ============
 logging.basicConfig(
@@ -53,15 +57,18 @@ def create_app(config_class=Config):
         if database_url.startswith("postgres://"):
             database_url = database_url.replace("postgres://", "postgresql://", 1)
         app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+        print("✅ Conectado a PostgreSQL (Railway)")
     else:
         # Desarrollo local con SQLite
         app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///quickgo.db'
+        print("✅ Usando SQLite local (desarrollo)")
     
     # 🔥 CRÍTICO: Cookies seguras en producción
     if os.environ.get('FLASK_ENV') == 'production' or database_url:
         app.config['SESSION_COOKIE_SECURE'] = True
         app.config['REMEMBER_COOKIE_SECURE'] = True
         app.config['SESSION_COOKIE_HTTPONLY'] = True
+        print("🔒 Cookies seguras activadas (HTTPS)")
     
     # Crear carpetas necesarias (para compatibilidad local)
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
