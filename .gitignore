@@ -1,8 +1,13 @@
-# Variables de entorno
+# ==========================================
+# VARIABLES DE ENTORNO (NUNCA SUBIR)
+# ==========================================
 .env
 .env.local
+.env.production
 
-# Python
+# ==========================================
+# PYTHON
+# ==========================================
 __pycache__/
 *.py[cod]
 *$py.class
@@ -11,33 +16,53 @@ __pycache__/
 venv/
 env/
 ENV/
+.venv
+*.egg-info/
+dist/
+build/
 
-# Base de datos
+# ==========================================
+# BASE DE DATOS (LOCAL)
+# ==========================================
 *.db
 *.sqlite
 *.sqlite3
 instance/
 
-# Uploads (mantener la estructura pero no los archivos)
-static/uploads/*
-!static/uploads/.gitkeep
-static/uploads/receipts/.gitkeep
-static/uploads/logos/.gitkeep
+# ==========================================
+# UPLOADS (Archivos subidos por usuarios)
+# ==========================================
+# Ignoramos los archivos de imágenes y PDFs subidos
+static/uploads/*.png
+static/uploads/*.jpg
+static/uploads/*.jpeg
+static/uploads/*.gif
+static/uploads/*.pdf
+static/uploads/*.webp
 
-# IDE
+# Mantenemos las subcarpetas vacías con .gitkeep
+!static/uploads/.gitkeep
+!static/uploads/receipts/.gitkeep
+!static/uploads/logos/.gitkeep
+
+# ==========================================
+# IDE y EDITORES
+# ==========================================
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
-# OS
+# ==========================================
+# SISTEMA OPERATIVO
+# ==========================================
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Logs
+# ==========================================
+# LOGS
+# ==========================================
 *.log
-
-# Distribution
-dist/
-build/
-*.egg-info/
+security.log

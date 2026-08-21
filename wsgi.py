@@ -1,7 +1,7 @@
 import os
-import eventlet
+from gevent import monkey
 # ¡MUY IMPORTANTE! Esto debe ir antes de importar Flask
-eventlet.monkey_patch()
+monkey.patch_all()
 
 from app import app, socketio
 
