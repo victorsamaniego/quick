@@ -10,3 +10,5 @@ COPY . .
 EXPOSE 8000
 
 CMD ["gunicorn", "--worker-class", "gevent", "--worker-connections", "1000", "-w", "1", "--bind", "0.0.0.0:8000", "wsgi:app"]
+
+# REBUILD 2026-08-26 - Force cloudinary install
