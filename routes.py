@@ -1910,7 +1910,7 @@ def dashboard():
     ).join(Order, User.id == Order.delivery_driver_id)\
      .join(Business, Order.business_id == Business.id)\
      .filter(Order.status == 'delivered')\
-     .group_by(User.id)\
+     .group_by(User.id, Business.name)\
      .order_by(db.func.count(Order.id).desc())\
      .limit(10).all()
     
