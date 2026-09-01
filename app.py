@@ -1,5 +1,4 @@
 from flask import Flask, session, render_template, request, current_app, jsonify, url_for
-from flask_mail import Mail
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from flask_login import LoginManager, current_user
 from flask_limiter import Limiter
@@ -41,7 +40,6 @@ logging.basicConfig(
 security_logger = logging.getLogger('security')
 
 # Inicializar extensiones
-mail = Mail()
 socketio = SocketIO(cors_allowed_origins="*")
 login_manager = LoginManager()
 
@@ -79,7 +77,7 @@ def create_app(config_class=Config):
     
     # Inicializar extensiones
     db.init_app(app)
-    mail.init_app(app)
+   
     
     # 🔥 CORREGIDO: SocketIO detecta automáticamente el mejor modo (gevent/threading)
     socketio.init_app(app, cors_allowed_origins="*")
