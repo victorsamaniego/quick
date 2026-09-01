@@ -6,7 +6,10 @@ load_dotenv()
 
 class Config:
     # Seguridad
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'quickgo-secret-key-production-2026'
+    SECRET_KEY = os.environ.get('SECRET_KEY')
+
+if not SECRET_KEY:
+    raise RuntimeError("SECRET_KEY no está configurada")
     
     # CSRF
     WTF_CSRF_ENABLED = True
