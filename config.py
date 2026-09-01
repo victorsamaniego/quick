@@ -8,8 +8,7 @@ class Config:
     # Seguridad
     SECRET_KEY = os.environ.get('SECRET_KEY')
 
-if not SECRET_KEY:
-    raise RuntimeError("SECRET_KEY no está configurada")
+SECRET_KEY = os.environ.get('SECRET_KEY')
     
     # CSRF
     WTF_CSRF_ENABLED = True
