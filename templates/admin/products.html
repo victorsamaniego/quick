@@ -62,7 +62,7 @@
                 <!-- Imagen del producto -->
                 <div class="position-relative">
                     {% if product.image_url %}
-                        <img src="{{ url_for('static', filename=product.image_url) }}" 
+                        <img src="{{ product.image_url|smart_image }}"
                              class="card-img-top" alt="{{ product.name }}" 
                              style="height: 200px; object-fit: cover;">
                     {% else %}
