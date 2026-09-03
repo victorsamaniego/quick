@@ -285,12 +285,12 @@
             <div class="card border-0 shadow-sm h-100">
                 {% if product.image_url %}
                     {% if product.image_url.startswith('uploads/') %}
-                        <img src="{{ url_for('static', filename=product.image_url) }}" 
+                        <img src="{{ product.image_url|smart_image }}" 
                              class="card-img-top" alt="{{ product.name }}" 
                              style="height: 200px; object-fit: cover;"
                              onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Sin+Imagen';">
                     {% else %}
-                        <img src="{{ url_for('static', filename='uploads/' + product.image_url) }}" 
+                        <img src="{{ product.image_url|smart_image }}" 
                              class="card-img-top" alt="{{ product.name }}" 
                              style="height: 200px; object-fit: cover;"
                              onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Sin+Imagen';">
