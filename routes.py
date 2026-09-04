@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, session
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, session, abort
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta, timezone
@@ -10,7 +10,7 @@ from math import radians, sin, cos, sqrt, atan2, isfinite
 from models import db, User, Product, Category, Order, OrderItem, Business, DeliveryRequest, ChatMessage, SecurityQuestion, SupportChat, DeliveryBusinessChat, UserMessage, Notification, NotificationRecipient
 from forms import (
     RegistrationForm, LoginForm, PasswordResetForm,
-    ProductForm, OrderForm, AdminUserForm, CategoryForm
+    ProductForm, OrderForm, AdminUserForm, CategoryForm, BusinessCoverageForm
 )
 from extensions import limiter
 
@@ -924,6 +924,37 @@ def activate_subscription():
 
 # ============ ADMIN ROUTES ============
 
+@admin_bp.route('/business/coverage', methods=['POST'])
+@login_required
+@business_admin_required
+def update_business_coverage():
+    # Ownership comes exclusively from the authenticated merchant.
+    if current_user.is_delivery or current_user.is_super_admin or not current_user.business_id:
+        abort(403)
+    business = db.session.get(Business, current_user.business_id)
+    if business is None:
+        abort(403)
+    allowed_fields = {'csrf_token', 'address', 'latitude', 'longitude', 'delivery_radius_km'}
+    if request.args or set(request.form) - allowed_fields:
+        abort(403)
+    if any(len(request.form.getlist(key)) != 1 for key in request.form):
+        abort(400, description='Formulario de cobertura inválido.')
+    form = BusinessCoverageForm()
+    if not form.validate_on_submit():
+        abort(400, description='Ubicación o radio inválidos, o formulario vencido. Volvé al panel e intentá nuevamente.')
+    try:
+        latitude, longitude = validar_coordenadas(form.latitude.data, form.longitude.data)
+    except (TypeError, ValueError):
+        abort(400, description='Coordenadas inválidas.')
+    business.latitude = latitude
+    business.longitude = longitude
+    business.address = form.address.data
+    business.delivery_radius_km = form.delivery_radius_km.data
+    db.session.commit()
+    flash('Ubicación y radio de cobertura actualizados.', 'success')
+    return redirect(url_for('admin.dashboard'))
+
+
 @admin_bp.route('/')
 @login_required
 @business_admin_required
@@ -1027,6 +1058,7 @@ def dashboard():
     delivery_users = User.query.filter_by(business_id=business_id, is_delivery=True, is_active=True).all()
     
     return render_template('admin/dashboard.html',
+                          coverage_form=BusinessCoverageForm(obj=current_user.business),
         total_users=total_users,
         total_sales=total_sales,
         total_orders=total_orders,
