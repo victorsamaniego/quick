@@ -6,7 +6,7 @@ import os
 import secrets
 import cloudinary.uploader
 from functools import wraps
-from math import radians, sin, cos, sqrt, atan2
+from math import radians, sin, cos, sqrt, atan2, isfinite
 from models import db, User, Product, Category, Order, OrderItem, Business, DeliveryRequest, ChatMessage, SecurityQuestion, SupportChat, DeliveryBusinessChat, UserMessage, Notification, NotificationRecipient
 from forms import (
     RegistrationForm, LoginForm, PasswordResetForm,
@@ -113,24 +113,44 @@ def get_recent_orders(user_id, limit=3):
         .order_by(Order.created_at.desc()).limit(limit).all()
 
 
+def validar_coordenadas(latitude, longitude):
+    latitude, longitude = float(latitude), float(longitude)
+    if not (isfinite(latitude) and isfinite(longitude)
+            and -90 <= latitude <= 90 and -180 <= longitude <= 180):
+        raise ValueError('Coordenadas inválidas')
+    return latitude, longitude
+
+
+def leer_cobertura_negocio(form):
+    latitude, longitude = validar_coordenadas(form.get('latitude'), form.get('longitude'))
+    radius = float(form.get('delivery_radius_km', 10))
+    if not isfinite(radius) or radius < 0:
+        raise ValueError('Radio inválido')
+    return latitude, longitude, radius
+
+
 def obtener_negocios_cercanos(user_lat, user_lon):
     """Retorna lista de negocios dentro del radio de delivery del cliente"""
     negocios_cercanos = []
     all_businesses = Business.query.filter_by(is_active=True).all()
     
+    try:
+        user_lat, user_lon = validar_coordenadas(user_lat, user_lon)
+    except (TypeError, ValueError):
+        return []
+
     for business in all_businesses:
-        if business.latitude and business.longitude:
-            distancia = calcular_distancia_negocio_km(
-                user_lat, user_lon,
-                business.latitude, business.longitude
-            )
-            
-            if distancia <= business.delivery_radius_km:
-                negocios_cercanos.append({
-                    'business': business,
-                    'distance': round(distancia, 2)
-                })
-    
+        try:
+            latitude, longitude = validar_coordenadas(business.latitude, business.longitude)
+            radius = float(business.delivery_radius_km)
+            if not isfinite(radius) or radius < 0:
+                continue
+        except (TypeError, ValueError):
+            continue
+        distancia = calcular_distancia_negocio_km(user_lat, user_lon, latitude, longitude)
+        if distancia <= radius:
+            negocios_cercanos.append({'business': business, 'distance': round(distancia, 2)})
+
     negocios_cercanos.sort(key=lambda x: x['distance'])
     return negocios_cercanos
 
@@ -821,27 +841,26 @@ def check_username():
 @main_bp.route('/api/update-user-location', methods=['POST'])
 def update_user_location():
     data = request.get_json()
-    latitude = data.get('latitude')
-    longitude = data.get('longitude')
-    
-    if latitude and longitude:
-        session['user_latitude'] = latitude
-        session['user_longitude'] = longitude
-        session.modified = True
-        
-        negocios_cercanos = obtener_negocios_cercanos(latitude, longitude)
-        
-        return jsonify({
-            'status': 'ok',
-            'negocios_count': len(negocios_cercanos),
-            'negocios': [{
-                'id': n['business'].id,
-                'name': n['business'].name,
-                'distance': n['distance']
-            } for n in negocios_cercanos[:5]]
-        })
-    
-    return jsonify({'status': 'error', 'message': 'Coordenadas inválidas'}), 400
+    try:
+        latitude, longitude = validar_coordenadas(data.get('latitude'), data.get('longitude'))
+    except (TypeError, ValueError):
+        return jsonify({'status': 'error', 'message': 'Coordenadas inválidas'}), 400
+
+    session['user_latitude'] = latitude
+    session['user_longitude'] = longitude
+    session.modified = True
+
+    negocios_cercanos = obtener_negocios_cercanos(latitude, longitude)
+
+    return jsonify({
+        'status': 'ok',
+        'negocios_count': len(negocios_cercanos),
+        'negocios': [{
+            'id': n['business'].id,
+            'name': n['business'].name,
+            'distance': n['distance']
+        } for n in negocios_cercanos[:5]]
+    })
 
 
 # ============ SUSCRIPCIÓN ============
@@ -1969,6 +1988,12 @@ def search_businesses():
 @super_admin_required
 def create_business():
     if request.method == 'POST':
+        try:
+            latitude, longitude, radius = leer_cobertura_negocio(request.form)
+        except (TypeError, ValueError):
+            flash('Ingresá latitud, longitud y radio de cobertura válidos (km).', 'danger')
+            return render_template('super_admin/business_form.html', business=None), 400
+
         slug = request.form.get('slug').lower().replace(' ', '-')
         if Business.query.filter_by(slug=slug).first():
             flash('Este nombre de negocio ya existe.', 'warning')
@@ -1980,6 +2005,9 @@ def create_business():
             description=request.form.get('description'),
             phone=request.form.get('phone'),
             address=request.form.get('address'),
+            latitude=latitude,
+            longitude=longitude,
+            delivery_radius_km=radius,
             commission_rate=float(request.form.get('commission_rate', 0.10)),
             delivery_fee_base=float(request.form.get('delivery_fee_base', 5000)),
             delivery_fee_per_km=float(request.form.get('delivery_fee_per_km', 1000))
@@ -2008,6 +2036,15 @@ def edit_business(business_id):
     business = Business.query.get_or_404(business_id)
     
     if request.method == 'POST':
+        try:
+            latitude, longitude, radius = leer_cobertura_negocio(request.form)
+        except (TypeError, ValueError):
+            flash('Ingresá latitud, longitud y radio de cobertura válidos (km).', 'danger')
+            return render_template('super_admin/business_form.html', business=business), 400
+
+        business.latitude = latitude
+        business.longitude = longitude
+        business.delivery_radius_km = radius
         business.name = request.form.get('name')
         business.description = request.form.get('description')
         business.phone = request.form.get('phone')
