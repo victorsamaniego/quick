@@ -18,6 +18,11 @@
                     <form method="POST" enctype="multipart/form-data">
                 
                         <div class="row mb-3">
+<div class="col-md-4"><label class="form-label">Latitud</label><input class="form-control" type="number" step="any" name="latitude" min="-90" max="90" value="{{ request.form.get('latitude', business.latitude if business and business.latitude is not none else '') }}" required></div>
+<div class="col-md-4"><label class="form-label">Longitud</label><input class="form-control" type="number" step="any" name="longitude" min="-180" max="180" value="{{ request.form.get('longitude', business.longitude if business and business.longitude is not none else '') }}" required></div>
+<div class="col-md-4"><label class="form-label">Radio de cobertura (km)</label><input class="form-control" type="number" step="any" name="delivery_radius_km" min="0" value="{{ request.form.get('delivery_radius_km', business.delivery_radius_km if business and business.delivery_radius_km is not none else 10) }}" required></div>
+                        </div>
+                        <div class="row mb-3">
                             <div class="col-md-6">
                                 <label class="form-label fw-semibold">Nombre del Negocio *</label>
                                 <input type="text" name="name" class="form-control" 

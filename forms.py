@@ -6,7 +6,7 @@ from wtforms import (
     DecimalField, FileField, SubmitField, BooleanField
 )
 from wtforms.validators import (
-    DataRequired, Email, EqualTo, Length,
+    DataRequired, InputRequired, Email, EqualTo, Length,
     ValidationError, Optional, NumberRange, Regexp
 )
 from models import User, SecurityQuestion
@@ -154,3 +154,20 @@ class AdminUserForm(FlaskForm):
 class CategoryForm(FlaskForm):
     name = StringField('Nombre de categoría', validators=[DataRequired(), Length(max=100)])
     description = TextAreaField('Descripción', validators=[Optional()])
+
+class BusinessCoverageForm(FlaskForm):
+    address = StringField('Dirección', validators=[Optional(), Length(max=255)])
+    latitude = FloatField('Latitud', validators=[InputRequired(), NumberRange(min=-90, max=90)])
+    longitude = FloatField('Longitud', validators=[InputRequired(), NumberRange(min=-180, max=180)])
+    delivery_radius_km = SelectField(
+        'Radio de cobertura', coerce=int,
+        choices=[(km, f'{km} km') for km in (1, 2, 3, 5, 10, 15, 20, 30, 50)],
+        validators=[InputRequired()]
+    )
+
+
+class QuickGoldForm(FlaskForm):
+    seller_type = SelectField(
+        'Tipo', choices=[('normal', 'NORMAL'), ('quickgold', 'QUICKGOLD')],
+        validators=[InputRequired()]
+    )

@@ -81,7 +81,7 @@
             </small>
             {% for negocio_info in negocios_cercanos[:5] %}
             <span class="business-badge">
-                {{ negocio_info.business.name }} - {{ negocio_info.distance }} km
+                {{ negocio_info.business.name }} - {% if negocio_info.distance is not none %}{{ negocio_info.distance }} km{% else %}Sin límite geográfico{% endif %}
             </span>
             {% endfor %}
             {% if negocios_cercanos|length > 5 %}

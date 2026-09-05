@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, session
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, session, abort
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta, timezone
@@ -6,11 +6,11 @@ import os
 import secrets
 import cloudinary.uploader
 from functools import wraps
-from math import radians, sin, cos, sqrt, atan2
+from math import radians, sin, cos, sqrt, atan2, isfinite
 from models import db, User, Product, Category, Order, OrderItem, Business, DeliveryRequest, ChatMessage, SecurityQuestion, SupportChat, DeliveryBusinessChat, UserMessage, Notification, NotificationRecipient
 from forms import (
     RegistrationForm, LoginForm, PasswordResetForm,
-    ProductForm, OrderForm, AdminUserForm, CategoryForm
+    ProductForm, OrderForm, AdminUserForm, CategoryForm, BusinessCoverageForm, QuickGoldForm
 )
 from extensions import limiter
 
@@ -113,25 +113,58 @@ def get_recent_orders(user_id, limit=3):
         .order_by(Order.created_at.desc()).limit(limit).all()
 
 
+def validar_coordenadas(latitude, longitude):
+    latitude, longitude = float(latitude), float(longitude)
+    if not (isfinite(latitude) and isfinite(longitude)
+            and -90 <= latitude <= 90 and -180 <= longitude <= 180):
+        raise ValueError('Coordenadas inválidas')
+    return latitude, longitude
+
+
+def leer_cobertura_negocio(form):
+    latitude, longitude = validar_coordenadas(form.get('latitude'), form.get('longitude'))
+    radius = float(form.get('delivery_radius_km', 10))
+    if not isfinite(radius) or radius < 0:
+        raise ValueError('Radio inválido')
+    return latitude, longitude, radius
+
+
 def obtener_negocios_cercanos(user_lat, user_lon):
     """Retorna lista de negocios dentro del radio de delivery del cliente"""
     negocios_cercanos = []
     all_businesses = Business.query.filter_by(is_active=True).all()
     
+    try:
+        user_lat, user_lon = validar_coordenadas(user_lat, user_lon)
+    except (TypeError, ValueError):
+        user_lat = user_lon = None
+
     for business in all_businesses:
-        if business.latitude and business.longitude:
-            distancia = calcular_distancia_negocio_km(
-                user_lat, user_lon,
-                business.latitude, business.longitude
-            )
-            
-            if distancia <= business.delivery_radius_km:
-                negocios_cercanos.append({
-                    'business': business,
-                    'distance': round(distancia, 2)
-                })
-    
-    negocios_cercanos.sort(key=lambda x: x['distance'])
+        if business.is_quickgold:
+            # QuickGold bypasses visibility coverage only; saved location/radius stay intact.
+            distance = None
+            try:
+                latitude, longitude = validar_coordenadas(business.latitude, business.longitude)
+                if user_lat is not None:
+                    distance = round(calcular_distancia_negocio_km(user_lat, user_lon, latitude, longitude), 2)
+            except (TypeError, ValueError):
+                pass
+            negocios_cercanos.append({'business': business, 'distance': distance})
+            continue
+        if user_lat is None:
+            continue
+        try:
+            latitude, longitude = validar_coordenadas(business.latitude, business.longitude)
+            radius = float(business.delivery_radius_km)
+            if not isfinite(radius) or radius < 0:
+                continue
+        except (TypeError, ValueError):
+            continue
+        distancia = calcular_distancia_negocio_km(user_lat, user_lon, latitude, longitude)
+        if distancia <= radius:
+            negocios_cercanos.append({'business': business, 'distance': round(distancia, 2)})
+
+    negocios_cercanos.sort(key=lambda x: x['distance'] if x['distance'] is not None else float('inf'))
     return negocios_cercanos
 
 
@@ -821,27 +854,26 @@ def check_username():
 @main_bp.route('/api/update-user-location', methods=['POST'])
 def update_user_location():
     data = request.get_json()
-    latitude = data.get('latitude')
-    longitude = data.get('longitude')
-    
-    if latitude and longitude:
-        session['user_latitude'] = latitude
-        session['user_longitude'] = longitude
-        session.modified = True
-        
-        negocios_cercanos = obtener_negocios_cercanos(latitude, longitude)
-        
-        return jsonify({
-            'status': 'ok',
-            'negocios_count': len(negocios_cercanos),
-            'negocios': [{
-                'id': n['business'].id,
-                'name': n['business'].name,
-                'distance': n['distance']
-            } for n in negocios_cercanos[:5]]
-        })
-    
-    return jsonify({'status': 'error', 'message': 'Coordenadas inválidas'}), 400
+    try:
+        latitude, longitude = validar_coordenadas(data.get('latitude'), data.get('longitude'))
+    except (TypeError, ValueError):
+        return jsonify({'status': 'error', 'message': 'Coordenadas inválidas'}), 400
+
+    session['user_latitude'] = latitude
+    session['user_longitude'] = longitude
+    session.modified = True
+
+    negocios_cercanos = obtener_negocios_cercanos(latitude, longitude)
+
+    return jsonify({
+        'status': 'ok',
+        'negocios_count': len(negocios_cercanos),
+        'negocios': [{
+            'id': n['business'].id,
+            'name': n['business'].name,
+            'distance': n['distance']
+        } for n in negocios_cercanos[:5]]
+    })
 
 
 # ============ SUSCRIPCIÓN ============
@@ -904,6 +936,37 @@ def activate_subscription():
 
 
 # ============ ADMIN ROUTES ============
+
+@admin_bp.route('/business/coverage', methods=['POST'])
+@login_required
+@business_admin_required
+def update_business_coverage():
+    # Ownership comes exclusively from the authenticated merchant.
+    if current_user.is_delivery or current_user.is_super_admin or not current_user.business_id:
+        abort(403)
+    business = db.session.get(Business, current_user.business_id)
+    if business is None:
+        abort(403)
+    allowed_fields = {'csrf_token', 'address', 'latitude', 'longitude', 'delivery_radius_km'}
+    if request.args or set(request.form) - allowed_fields:
+        abort(403)
+    if any(len(request.form.getlist(key)) != 1 for key in request.form):
+        abort(400, description='Formulario de cobertura inválido.')
+    form = BusinessCoverageForm()
+    if not form.validate_on_submit():
+        abort(400, description='Ubicación o radio inválidos, o formulario vencido. Volvé al panel e intentá nuevamente.')
+    try:
+        latitude, longitude = validar_coordenadas(form.latitude.data, form.longitude.data)
+    except (TypeError, ValueError):
+        abort(400, description='Coordenadas inválidas.')
+    business.latitude = latitude
+    business.longitude = longitude
+    business.address = form.address.data
+    business.delivery_radius_km = form.delivery_radius_km.data
+    db.session.commit()
+    flash('Ubicación y radio de cobertura actualizados.', 'success')
+    return redirect(url_for('admin.dashboard'))
+
 
 @admin_bp.route('/')
 @login_required
@@ -1008,6 +1071,7 @@ def dashboard():
     delivery_users = User.query.filter_by(business_id=business_id, is_delivery=True, is_active=True).all()
     
     return render_template('admin/dashboard.html',
+                          coverage_form=BusinessCoverageForm(obj=current_user.business),
         total_users=total_users,
         total_sales=total_sales,
         total_orders=total_orders,
@@ -1947,7 +2011,7 @@ def dashboard():
 @super_admin_required
 def manage_businesses():
     businesses = Business.query.order_by(Business.created_at.desc()).all()
-    return render_template('super_admin/businesses.html', businesses=businesses)
+    return render_template('super_admin/businesses.html', businesses=businesses, quickgold_form=QuickGoldForm())
 
 
 @super_admin_bp.route('/businesses/search')
@@ -1961,7 +2025,28 @@ def search_businesses():
         ).order_by(Business.created_at.desc()).all()
     else:
         businesses = Business.query.order_by(Business.created_at.desc()).all()
-    return render_template('super_admin/businesses.html', businesses=businesses)
+    return render_template('super_admin/businesses.html', businesses=businesses, quickgold_form=QuickGoldForm())
+
+
+@super_admin_bp.route('/businesses/<int:business_id>/quickgold', methods=['POST'])
+@login_required
+def update_quickgold(business_id):
+    if not current_user.is_super_admin:
+        abort(403)
+    if request.args or set(request.form) - {'csrf_token', 'seller_type'}:
+        abort(400)
+    if any(len(request.form.getlist(key)) != 1 for key in request.form):
+        abort(400)
+    form = QuickGoldForm()
+    if not form.validate_on_submit():
+        abort(400, description='Tipo inválido o formulario vencido. Volvé al listado de negocios.')
+    business = db.session.get(Business, business_id)
+    if business is None:
+        abort(404)
+    business.is_quickgold = form.seller_type.data == 'quickgold'
+    db.session.commit()
+    flash('Tipo de vendedor actualizado.', 'success')
+    return redirect(url_for('super_admin.manage_businesses'))
 
 
 @super_admin_bp.route('/businesses/new', methods=['GET', 'POST'])
@@ -1969,6 +2054,12 @@ def search_businesses():
 @super_admin_required
 def create_business():
     if request.method == 'POST':
+        try:
+            latitude, longitude, radius = leer_cobertura_negocio(request.form)
+        except (TypeError, ValueError):
+            flash('Ingresá latitud, longitud y radio de cobertura válidos (km).', 'danger')
+            return render_template('super_admin/business_form.html', business=None), 400
+
         slug = request.form.get('slug').lower().replace(' ', '-')
         if Business.query.filter_by(slug=slug).first():
             flash('Este nombre de negocio ya existe.', 'warning')
@@ -1980,6 +2071,9 @@ def create_business():
             description=request.form.get('description'),
             phone=request.form.get('phone'),
             address=request.form.get('address'),
+            latitude=latitude,
+            longitude=longitude,
+            delivery_radius_km=radius,
             commission_rate=float(request.form.get('commission_rate', 0.10)),
             delivery_fee_base=float(request.form.get('delivery_fee_base', 5000)),
             delivery_fee_per_km=float(request.form.get('delivery_fee_per_km', 1000))
@@ -2008,6 +2102,15 @@ def edit_business(business_id):
     business = Business.query.get_or_404(business_id)
     
     if request.method == 'POST':
+        try:
+            latitude, longitude, radius = leer_cobertura_negocio(request.form)
+        except (TypeError, ValueError):
+            flash('Ingresá latitud, longitud y radio de cobertura válidos (km).', 'danger')
+            return render_template('super_admin/business_form.html', business=business), 400
+
+        business.latitude = latitude
+        business.longitude = longitude
+        business.delivery_radius_km = radius
         business.name = request.form.get('name')
         business.description = request.form.get('description')
         business.phone = request.form.get('phone')
