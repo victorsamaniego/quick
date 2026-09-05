@@ -6,9 +6,9 @@
     <h2 class="fw-bold mb-4">💬 Soporte Técnico - {{ business.name }}</h2>
     
     <div class="card border-0 shadow-sm">
-        <div class="card-body" style="height: 400px; overflow-y: auto;" id="chatBox">
+        <div class="card-body" style="height: 400px; overflow-y: auto;" id="private-chat" data-channel="support_{{ business.id }}" >
             {% for msg in mensajes %}
-            <div class="mb-3 {{ 'text-end' if not msg.is_from_admin else '' }}">
+            <div data-private-message-id="{{ msg.id }}" class="mb-3 {{ 'text-end' if not msg.is_from_admin else '' }}">
                 <div class="d-inline-block p-3 rounded {{ 'bg-warning' if not msg.is_from_admin else 'bg-light' }} border">
                     <strong>{{ msg.sender.display_name }}</strong>
                     <small class="text-muted ms-2">{{ msg.created_at }}</small>
@@ -32,4 +32,7 @@
         </div>
     </div>
 </div>
+{% endblock %}
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/private_chat.js') }}"></script>
 {% endblock %}

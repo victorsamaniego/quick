@@ -318,7 +318,7 @@
                 <div class="card-header bg-white border-0 py-3">
                     <h5 class="fw-bold mb-0">📦 Pedidos Recientes</h5>
                 </div>
-                <div class="card-body p-0">
+                <div class="card-body p-0" id="realtime-orders">
                     {% if recent_orders %}
                     <div class="table-responsive">
                         <table class="table table-hover mb-0">
@@ -547,27 +547,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // ===== SOCKET.IO: Notificaciones en Tiempo Real =====
-    if (window.socket) {
-        window.socket.on('new_order', function(data) {
-            // Reproducir sonido
-            const notificationSound = document.getElementById('notificationSound');
-            if (notificationSound) {
-                notificationSound.play().catch(() => {});
-            }
-            
-            // Notificación del navegador
-            if ('Notification' in window && Notification.permission === 'granted') {
-                new Notification('🆕 Nuevo Pedido', {
-                    body: `Pedido #${data.order_id} - GS ${data.total}`,
-                    icon: '/static/images/icon.png'
-                });
-            }
-            
-            // Recargar para mostrar nuevo pedido
-            setTimeout(() => location.reload(), 2000);
-        });
-    }
+
 });
 </script>
 {% endblock %}

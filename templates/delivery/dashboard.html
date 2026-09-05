@@ -56,6 +56,7 @@
         </div>
     </div>
 
+    <section id="realtime-orders">
     <!-- Pedidos Asignados (Activos) -->
     {% if delivery_orders %}
     <div class="row mb-4">
@@ -276,6 +277,7 @@
         </div>
     </div>
 
+    </section>
     <!-- Mapa de Ubicación -->
     <div class="row mt-4">
         <div class="col-12">
@@ -342,6 +344,9 @@
 }
 </style>
 
+{% endblock %}
+
+{% block extra_js %}
 <!-- Mapa Leaflet -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -390,7 +395,9 @@ function updateLocation() {
 // Actualizar cada 5 segundos
 setInterval(updateLocation, 5000);
 updateLocation();
+</script>
 
+<script>
 // Marcar como "Llegué"
 function markArrived(orderId) {
     fetch(`/delivery/api/arrived/${orderId}`, {
@@ -426,10 +433,9 @@ if (typeof window.socket !== 'undefined' && window.socket) {
     {% endfor %}
     
     // ✅ ESCUCHAR NUEVAS SOLICITUDES DE DELIVERY
-    window.socket.on('new_delivery_request', function(data) {
+    window.QuickRealtime.on('new_delivery_request', function(data) {
         console.log('📦 ¡NUEVA SOLICITUD RECIBIDA!', data);
         
-        playNotificationSound();
         showNotification(data);
         
         if ('Notification' in window && Notification.permission === 'granted') {
@@ -439,32 +445,17 @@ if (typeof window.socket !== 'undefined' && window.socket) {
             });
         }
         
-        setTimeout(() => {
-            location.reload();
-        }, 3000);
+
     });
     
     // ✅ ESCUCHAR NUEVOS MENSAJES DE CHAT
-    window.socket.on('new_chat_message', function(data) {
+    window.QuickRealtime.on('new_chat_message', function(data) {
         console.log('💬 ¡NUEVO MENSAJE DE CHAT!', data);
         showChatNotification(data);
     });
     
 } else {
     console.error('❌ SocketIO no está disponible');
-}
-
-// Función para reproducir sonido de notificación
-function playNotificationSound() {
-    try {
-        const audio = new Audio('/static/audio/notification.mp3');
-        audio.volume = 0.5;
-        audio.play().catch(err => {
-            console.log('🔕 Sonido bloqueado por el navegador:', err);
-        });
-    } catch (e) {
-        console.log('No hay archivo de sonido disponible');
-    }
 }
 
 // Función para mostrar notificación visual
@@ -514,7 +505,7 @@ function showChatNotification(data) {
             <div class="flex-grow-1">
                 <strong class="d-block">Nuevo Mensaje</strong>
                 <small class="text-muted">
-                    ${data.message.sender_name}: ${data.message.message}
+                    <span class="chat-preview"></span>
                 </small>
             </div>
         </div>
@@ -528,8 +519,8 @@ function showChatNotification(data) {
         </div>
     `;
     
+    notification.querySelector('.chat-preview').textContent = `${data.message.sender_name}: ${data.message.message}`;
     document.body.appendChild(notification);
-    playNotificationSound();
     
     setTimeout(() => {
         notification.remove();

@@ -1,3 +1,5 @@
+from uuid import uuid4
+from realtime import can_access_order, publish, publish_status, order_rooms
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, session, abort
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.utils import secure_filename
@@ -626,6 +628,8 @@ def create_order():
         
         db.session.add(order)
         db.session.commit()
+        publish('new_order', {'order_id': order.id, 'business_id': order.business_id,
+                'total': order.total_amount}, [f'business_{order.business_id}'])
         
         session.pop('cart', None)
         session.pop('user_location', None)
@@ -658,7 +662,8 @@ def mark_order_received(order_id):
     if current_user.is_admin or current_user.is_delivery:
         return redirect(url_for('main.dashboard'))
     
-    order = Order.query.get_or_404(order_id)
+    order = Order.query.filter_by(id=order_id).with_for_update().first_or_404()
+    old_status = order.status
     if order.user_id != current_user.id:
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('main.dashboard'))
@@ -667,6 +672,7 @@ def mark_order_received(order_id):
         order.status = 'delivered'
         order.delivered_at = datetime.now(timezone.utc)
         db.session.commit()
+        publish_status(order, old_status)
         flash('Pedido marcado como recibido. Gracias por tu compra en QuickGo!', 'success')
     else:
         flash('Este pedido aun no ha sido enviado.', 'warning')
@@ -1339,7 +1345,9 @@ def manage_orders():
 @business_admin_required
 @subscription_required
 def update_order_status(order_id):
-    order = Order.query.get_or_404(order_id)
+    order = Order.query.filter_by(id=order_id).with_for_update().first_or_404()
+    old_status = order.status
+    old_driver = order.delivery_driver_id
     if order.business_id != current_user.business_id:
         flash('No podes actualizar pedidos de otros negocios.', 'danger')
         return redirect(url_for('admin.manage_orders'))
@@ -1352,13 +1360,16 @@ def update_order_status(order_id):
         
         if delivery_driver_id and new_status == 'shipped':
             driver = User.query.get(delivery_driver_id)
-            if driver and driver.business_id == current_user.business_id:
+            if driver and driver.is_delivery and driver.is_active and driver.business_id == current_user.business_id:
                 order.delivery_driver_id = delivery_driver_id
         
         if new_status == 'delivered':
             order.delivered_at = datetime.now(timezone.utc)
         
         db.session.commit()
+        publish_status(order, old_status)
+        if old_status == order.status and old_driver != order.delivery_driver_id and order.delivery_driver_id:
+            publish('delivery_assigned', {'event_id': uuid4().hex, 'order_id': order.id}, order_rooms(order))
         
         flash(f'Estado actualizado: {order.status_label}', 'success')
     else:
@@ -1423,12 +1434,11 @@ def actualizar_costo_delivery(order_id):
     
     db.session.commit()
     
-    from app import socketio
-    socketio.emit('delivery_fee_updated', {
+    publish('delivery_fee_updated', {
         'order_id': order.id,
         'new_fee': nuevo_costo,
         'new_total': order.total_amount
-    }, room=f'order_{order.id}')
+    }, rooms=[f'order_{order.id}'])
     
     return jsonify({'success': True, 'new_fee': nuevo_costo, 'new_total': order.total_amount})
 
@@ -1496,13 +1506,11 @@ def request_delivery(order_id):
         db.session.add(delivery_request)
         db.session.commit()
         
-        from app import socketio
-        
         for item in nearby_deliveries:
             delivery = item['delivery']
             distance = item['distance']
             
-            socketio.emit('new_delivery_request', {
+            publish('new_delivery_request', {
                 'request_id': delivery_request.id,
                 'order_id': order.id,
                 'business_name': current_user.business.name,
@@ -1510,7 +1518,7 @@ def request_delivery(order_id):
                 'pickup_address': current_user.business.address,
                 'delivery_address': order.shipping_address,
                 'total_amount': order.total_amount
-            }, room=f'delivery_{delivery.id}')
+            }, rooms=[f'delivery_{delivery.id}'])
         
         flash(f'📢 Solicitud enviada a {len(nearby_deliveries)} deliverys en un radio de {radius}km', 'success')
         return redirect(url_for('admin.delivery_request_status', request_id=delivery_request.id))
@@ -1538,6 +1546,18 @@ def delivery_request_status(request_id):
     return render_template('admin/delivery_request_status.html', request=delivery_request)
 
 
+def eligible_delivery(user, delivery_request):
+    if not user.is_delivery or not user.is_active or delivery_request.status != 'pending' or delivery_request.is_expired():
+        return False
+    order = delivery_request.order
+    if order.status != 'pending' or order.delivery_driver_id:
+        return False
+    if order.client_latitude is None or order.client_longitude is None:
+        return False
+    return any(item['delivery'].id == user.id for item in User.find_nearby_deliveries(
+        order.client_latitude, order.client_longitude, delivery_request.search_radius, business_id=None))
+
+
 @main_bp.route('/delivery-requests')
 @login_required
 def delivery_requests_list():
@@ -1545,27 +1565,22 @@ def delivery_requests_list():
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('main.index'))
     
-    requests = DeliveryRequest.query.filter_by(status='pending').all()
-    
-    if current_user.latitude and current_user.longitude:
-        filtered_requests = []
-        for req in requests:
-            order = req.order
-            if order.client_latitude and order.client_longitude:
-                nearby = User.find_nearby_deliveries(
-                    current_user.latitude,
-                    current_user.longitude,
-                    req.search_radius
-                )
-                for item in nearby:
-                    if item['delivery'].id == current_user.id:
-                        filtered_requests.append({
-                            'request': req,
-                            'distance': item['distance']
-                        })
-                        break
-        requests = filtered_requests
-    
+    requests = []
+    for req in DeliveryRequest.query.filter_by(status='pending').all():
+        if req.is_expired() or req.order.status != 'pending' or req.order.delivery_driver_id:
+            continue
+        if req.order.client_latitude is None or req.order.client_longitude is None:
+            continue
+        for item in User.find_nearby_deliveries(req.order.client_latitude, req.order.client_longitude,
+                                               req.search_radius, business_id=None):
+            if item['delivery'].id == current_user.id:
+                expires = req.expires_at
+                if expires and expires.tzinfo is None:
+                    expires = expires.replace(tzinfo=timezone.utc)
+                remaining = max(0, int((expires - datetime.now(timezone.utc)).total_seconds())) if expires else 0
+                requests.append({'request': req, 'distance': item['distance'], 'remaining': remaining})
+                break
+
     return render_template('delivery/requests.html', requests=requests)
 
 
@@ -1575,7 +1590,10 @@ def accept_delivery_request(request_id):
     if not current_user.is_delivery:
         return jsonify({'error': 'Unauthorized'}), 403
     
-    delivery_request = DeliveryRequest.query.get_or_404(request_id)
+    delivery_request = DeliveryRequest.query.filter_by(id=request_id).with_for_update().first_or_404()
+    Order.query.filter_by(id=delivery_request.order_id).with_for_update().first_or_404()
+    if not eligible_delivery(current_user, delivery_request):
+        return jsonify({'error': 'No autorizado o solicitud expirada'}), 403
     
     if delivery_request.status != 'pending':
         flash('Esta solicitud ya no está disponible.', 'warning')
@@ -1586,25 +1604,26 @@ def accept_delivery_request(request_id):
     delivery_request.accepted_at = datetime.now(timezone.utc)
     
     order = delivery_request.order
+    old_status = order.status
     order.delivery_driver_id = current_user.id
     order.status = 'shipped'
     
     db.session.commit()
+    publish_status(order, old_status)
     
-    from app import socketio
     
-    socketio.emit('delivery_request_accepted', {
+    publish('delivery_request_accepted', {
         'request_id': delivery_request.id,
         'order_id': order.id,
         'driver_name': current_user.email,
         'driver_phone': current_user.phone
-    }, room=f'business_{delivery_request.business_id}')
+    }, rooms=[f'business_{delivery_request.business_id}'])
     
-    socketio.emit('delivery_assigned', {
+    publish('delivery_assigned', {
         'order_id': order.id,
         'driver_name': current_user.email,
         'driver_phone': current_user.phone
-    }, room=f'user_{order.user_id}')
+    }, rooms=[f'user_{order.user_id}'])
     
     flash('✅ Solicitud aceptada. ¡A retirar el pedido!', 'success')
     return redirect(url_for('delivery.dashboard'))
@@ -1616,7 +1635,9 @@ def reject_delivery_request(request_id):
     if not current_user.is_delivery:
         return jsonify({'error': 'Unauthorized'}), 403
     
-    delivery_request = DeliveryRequest.query.get_or_404(request_id)
+    delivery_request = DeliveryRequest.query.filter_by(id=request_id).with_for_update().first_or_404()
+    if not eligible_delivery(current_user, delivery_request):
+        return jsonify({'error': 'No autorizado o solicitud expirada'}), 403
     
     if delivery_request.status != 'pending':
         flash('Esta solicitud ya no está disponible.', 'warning')
@@ -1625,12 +1646,11 @@ def reject_delivery_request(request_id):
     delivery_request.status = 'rejected'
     db.session.commit()
     
-    from app import socketio
-    socketio.emit('delivery_request_rejected', {
+    publish('delivery_request_rejected', {
         'request_id': delivery_request.id,
         'order_id': delivery_request.order.id,
         'driver_id': current_user.id
-    }, room=f'business_{delivery_request.business_id}')
+    }, rooms=[f'business_{delivery_request.business_id}'])
     
     flash(' Solicitud rechazada', 'info')
     return redirect(url_for('delivery.dashboard'))
@@ -1641,18 +1661,7 @@ def reject_delivery_request(request_id):
 def order_chat(order_id):
     order = Order.query.get_or_404(order_id)
     
-    has_permission = False
-    
-    if current_user.id == order.user_id:
-        has_permission = True
-    
-    if order.delivery_driver_id and current_user.id == order.delivery_driver_id:
-        has_permission = True
-    
-    if current_user.is_admin and current_user.business_id == order.business_id:
-        has_permission = True
-    
-    if not has_permission:
+    if not can_access_order(current_user, order):
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('main.dashboard'))
     
@@ -1667,6 +1676,17 @@ def order_chat(order_id):
     return render_template('chat/order_chat.html', order=order, messages=messages)
 
 
+
+@main_bp.route('/api/chat/order/<int:order_id>/messages')
+@login_required
+def chat_history(order_id):
+    order = Order.query.get_or_404(order_id)
+    if not can_access_order(current_user, order):
+        return jsonify({'error': 'Unauthorized'}), 403
+    after = request.args.get('after', 0, type=int)
+    messages = ChatMessage.query.filter(ChatMessage.order_id == order_id, ChatMessage.id > after).order_by(ChatMessage.id).limit(200).all()
+    return jsonify({'messages': [message.to_dict() for message in messages]})
+
 @main_bp.route('/api/chat/order/<int:order_id>/send', methods=['POST'])
 @login_required
 def send_chat_message(order_id):
@@ -1675,19 +1695,13 @@ def send_chat_message(order_id):
     if order.status in ['delivered', 'cancelled']:
         return jsonify({'error': 'Este pedido está cerrado. No se pueden enviar mensajes.'}), 403
     
-    has_permission = False
-    if current_user.id == order.user_id:
-        has_permission = True
-    if order.delivery_driver_id and current_user.id == order.delivery_driver_id:
-        has_permission = True
-    if current_user.is_admin and current_user.business_id == order.business_id:
-        has_permission = True
-    
-    if not has_permission:
+    if not can_access_order(current_user, order):
         return jsonify({'error': 'Unauthorized'}), 403
     
-    data = request.get_json()
-    message_text = data.get('message', '').strip()
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not isinstance(data.get('message'), str):
+        return jsonify({'error': 'Mensaje inválido'}), 400
+    message_text = data['message'].strip()
     
     if not message_text:
         return jsonify({'error': 'Mensaje vacío'}), 400
@@ -1700,21 +1714,14 @@ def send_chat_message(order_id):
     db.session.add(message)
     db.session.commit()
     
-    from app import socketio
     
     message_data = {
         'order_id': order_id,
         'message': message.to_dict()
     }
     
-    socketio.emit('new_chat_message', message_data, room=f'order_chat_{order_id}')
-    socketio.emit('new_chat_message', message_data, room=f'user_{order.user_id}')
-    
-    if order.delivery_driver_id:
-        socketio.emit('new_chat_message', message_data, room=f'delivery_{order.delivery_driver_id}')
-    
-    socketio.emit('new_chat_message', message_data, room=f'business_{order.business_id}')
-    
+    publish('new_chat_message', message_data, order_rooms(order))
+
     return jsonify({'success': True, 'message': message.to_dict()})
 
 
@@ -1863,7 +1870,8 @@ def mark_delivered(order_id):
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('main.index'))
     
-    order = Order.query.get_or_404(order_id)
+    order = Order.query.filter_by(id=order_id).with_for_update().first_or_404()
+    old_status = order.status
     
     if order.delivery_driver_id != current_user.id:
         flash('No autorizado.', 'danger')
@@ -1872,6 +1880,7 @@ def mark_delivered(order_id):
     order.status = 'delivered'
     order.delivered_at = datetime.now(timezone.utc)
     db.session.commit()
+    publish_status(order, old_status)
     
     flash('Pedido marcado como entregado.', 'success')
     return redirect(url_for('delivery.dashboard'))
@@ -2349,6 +2358,8 @@ def soporte():
             )
             db.session.add(chat)
             db.session.commit()
+            publish('private_chat_message', {'channel': f'support_{business.id}',
+                    'message': {**chat.to_dict(), 'sender_id': chat.sender_id}}, [f'support_{business.id}'])
             flash('✅ Mensaje enviado al Super Admin.', 'success')
             return redirect(url_for('main.soporte'))
     
@@ -2400,6 +2411,8 @@ def soporte_admin(business_id):
             )
             db.session.add(chat)
             db.session.commit()
+            publish('private_chat_message', {'channel': f'support_{business.id}',
+                    'message': {**chat.to_dict(), 'sender_id': chat.sender_id}}, [f'support_{business.id}'])
             return redirect(url_for('super_admin.soporte_admin', business_id=business_id))
     
     mensajes = SupportChat.query.filter_by(business_id=business.id).order_by(SupportChat.created_at.asc()).all()
@@ -2436,6 +2449,8 @@ def chat_delivery_negocio(order_id):
             )
             db.session.add(chat)
             db.session.commit()
+            publish('private_chat_message', {'channel': f'delivery_chat_{order.id}',
+                    'message': {**chat.to_dict(), 'sender_id': chat.sender_id}}, [f'delivery_chat_{order.id}'])
             return redirect(url_for('main.chat_delivery_negocio', order_id=order.id))
     
     mensajes = DeliveryBusinessChat.query.filter_by(order_id=order.id).order_by(DeliveryBusinessChat.created_at.asc()).all()
