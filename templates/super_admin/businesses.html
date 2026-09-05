@@ -57,6 +57,16 @@
                                     <td>
                                         <strong class="d-block">{{ business.name }}</strong>
                                         <small class="text-muted fst-italic">{{ business.slug }}</small>
+                                        <div class="small mt-2">
+                                            Tipo: <strong>{{ 'QUICKGOLD' if business.is_quickgold else 'NORMAL' }}</strong><br>
+                                            Cobertura: {% if business.is_quickgold %}Sin límite geográfico{% else %}{{ business.delivery_radius_km }} km{% endif %}<br>
+                                            Radio guardado: {{ business.delivery_radius_km }} km
+                                        </div>
+                                        <form method="POST" action="{{ url_for('super_admin.update_quickgold', business_id=business.id) }}" class="mt-2">
+                                            {{ quickgold_form.hidden_tag() }}
+                                            <input type="hidden" name="seller_type" value="{{ 'normal' if business.is_quickgold else 'quickgold' }}">
+                                            <button class="btn btn-sm btn-outline-warning" type="submit">Convertir a {{ 'NORMAL' if business.is_quickgold else 'QUICKGOLD' }}</button>
+                                        </form>
                                     </td>
                                     <td>
                                         {% if business.admin_user %}

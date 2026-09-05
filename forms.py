@@ -164,3 +164,10 @@ class BusinessCoverageForm(FlaskForm):
         choices=[(km, f'{km} km') for km in (1, 2, 3, 5, 10, 15, 20, 30, 50)],
         validators=[InputRequired()]
     )
+
+
+class QuickGoldForm(FlaskForm):
+    seller_type = SelectField(
+        'Tipo', choices=[('normal', 'NORMAL'), ('quickgold', 'QUICKGOLD')],
+        validators=[InputRequired()]
+    )

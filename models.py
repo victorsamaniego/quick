@@ -177,6 +177,7 @@ class Business(db.Model):
     latitude = db.Column(db.Float, nullable=True)
     longitude = db.Column(db.Float, nullable=True)
     delivery_radius_km = db.Column(db.Float, default=10.0)
+    is_quickgold = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     requires_subscription = db.Column(db.Boolean, default=True)
     subscription_exempt_reason = db.Column(db.String(200), nullable=True)
     is_active = db.Column(db.Boolean, default=True)

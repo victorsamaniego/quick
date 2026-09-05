@@ -10,7 +10,7 @@ from math import radians, sin, cos, sqrt, atan2, isfinite
 from models import db, User, Product, Category, Order, OrderItem, Business, DeliveryRequest, ChatMessage, SecurityQuestion, SupportChat, DeliveryBusinessChat, UserMessage, Notification, NotificationRecipient
 from forms import (
     RegistrationForm, LoginForm, PasswordResetForm,
-    ProductForm, OrderForm, AdminUserForm, CategoryForm, BusinessCoverageForm
+    ProductForm, OrderForm, AdminUserForm, CategoryForm, BusinessCoverageForm, QuickGoldForm
 )
 from extensions import limiter
 
@@ -137,9 +137,22 @@ def obtener_negocios_cercanos(user_lat, user_lon):
     try:
         user_lat, user_lon = validar_coordenadas(user_lat, user_lon)
     except (TypeError, ValueError):
-        return []
+        user_lat = user_lon = None
 
     for business in all_businesses:
+        if business.is_quickgold:
+            # QuickGold bypasses visibility coverage only; saved location/radius stay intact.
+            distance = None
+            try:
+                latitude, longitude = validar_coordenadas(business.latitude, business.longitude)
+                if user_lat is not None:
+                    distance = round(calcular_distancia_negocio_km(user_lat, user_lon, latitude, longitude), 2)
+            except (TypeError, ValueError):
+                pass
+            negocios_cercanos.append({'business': business, 'distance': distance})
+            continue
+        if user_lat is None:
+            continue
         try:
             latitude, longitude = validar_coordenadas(business.latitude, business.longitude)
             radius = float(business.delivery_radius_km)
@@ -151,7 +164,7 @@ def obtener_negocios_cercanos(user_lat, user_lon):
         if distancia <= radius:
             negocios_cercanos.append({'business': business, 'distance': round(distancia, 2)})
 
-    negocios_cercanos.sort(key=lambda x: x['distance'])
+    negocios_cercanos.sort(key=lambda x: x['distance'] if x['distance'] is not None else float('inf'))
     return negocios_cercanos
 
 
@@ -1998,7 +2011,7 @@ def dashboard():
 @super_admin_required
 def manage_businesses():
     businesses = Business.query.order_by(Business.created_at.desc()).all()
-    return render_template('super_admin/businesses.html', businesses=businesses)
+    return render_template('super_admin/businesses.html', businesses=businesses, quickgold_form=QuickGoldForm())
 
 
 @super_admin_bp.route('/businesses/search')
@@ -2012,7 +2025,28 @@ def search_businesses():
         ).order_by(Business.created_at.desc()).all()
     else:
         businesses = Business.query.order_by(Business.created_at.desc()).all()
-    return render_template('super_admin/businesses.html', businesses=businesses)
+    return render_template('super_admin/businesses.html', businesses=businesses, quickgold_form=QuickGoldForm())
+
+
+@super_admin_bp.route('/businesses/<int:business_id>/quickgold', methods=['POST'])
+@login_required
+def update_quickgold(business_id):
+    if not current_user.is_super_admin:
+        abort(403)
+    if request.args or set(request.form) - {'csrf_token', 'seller_type'}:
+        abort(400)
+    if any(len(request.form.getlist(key)) != 1 for key in request.form):
+        abort(400)
+    form = QuickGoldForm()
+    if not form.validate_on_submit():
+        abort(400, description='Tipo inválido o formulario vencido. Volvé al listado de negocios.')
+    business = db.session.get(Business, business_id)
+    if business is None:
+        abort(404)
+    business.is_quickgold = form.seller_type.data == 'quickgold'
+    db.session.commit()
+    flash('Tipo de vendedor actualizado.', 'success')
+    return redirect(url_for('super_admin.manage_businesses'))
 
 
 @super_admin_bp.route('/businesses/new', methods=['GET', 'POST'])
