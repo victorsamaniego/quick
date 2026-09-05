@@ -1,0 +1,14 @@
+<section class="order-destination my-3" aria-label="Destino de entrega guardado">
+    {% if order.client_latitude is not none and order.client_longitude is not none %}
+    <small class="d-block">Punto de entrega guardado: {{ order.client_latitude }}, {{ order.client_longitude }}</small>
+    <div data-order-destination data-latitude="{{ order.client_latitude }}" data-longitude="{{ order.client_longitude }}"
+         {% if destination_show_business|default(false) and order.business and order.business.latitude is not none and order.business.longitude is not none %}
+         data-business-latitude="{{ order.business.latitude }}" data-business-longitude="{{ order.business.longitude }}"
+         {% endif %}
+         role="region" aria-label="Mapa del destino confirmado" style="height: 300px; width: 100%; border-radius: 12px; z-index: 1;">
+    </div>
+    <a href="https://www.google.com/maps/search/?api=1&amp;query={{ order.client_latitude }},{{ order.client_longitude }}" target="_blank" rel="noopener">Ver destino en el mapa</a>
+    {% else %}
+    <p class="text-muted" role="status">Ubicación de entrega no disponible</p>
+    {% endif %}
+</section>
