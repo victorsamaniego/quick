@@ -1,12 +1,12 @@
 from flask_wtf import FlaskForm
 from flask_wtf.file import FileAllowed
 from wtforms import (
-    StringField, PasswordField, EmailField, TelField,
+    HiddenField, StringField, PasswordField, EmailField, TelField,
     TextAreaField, FloatField, IntegerField, SelectField,
     DecimalField, FileField, SubmitField, BooleanField
 )
 from wtforms.validators import (
-    DataRequired, InputRequired, Email, EqualTo, Length,
+    AnyOf, DataRequired, InputRequired, Email, EqualTo, Length,
     ValidationError, Optional, NumberRange, Regexp
 )
 from models import User, SecurityQuestion
@@ -131,6 +131,9 @@ class ProductForm(FlaskForm):
 # PEDIDOS
 # ============================================================
 class OrderForm(FlaskForm):
+    client_latitude = HiddenField('Latitud de entrega', validators=[InputRequired()])
+    client_longitude = HiddenField('Longitud de entrega', validators=[InputRequired()])
+    destination_confirmed = HiddenField('Confirmación del destino', validators=[AnyOf(['yes'])])
     shipping_address = TextAreaField('Dirección de envío', validators=[DataRequired()])
     shipping_phone = TelField('Teléfono de contacto', validators=[
         DataRequired(), Length(min=8, max=20)

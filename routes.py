@@ -493,6 +493,17 @@ def create_order():
         flash('No puedes realizar compras.', 'warning')
         return redirect(url_for('main.dashboard'))
     
+    if request.method == 'POST':
+        allowed_fields = {
+            'csrf_token', 'shipping_address', 'shipping_phone', 'shipping_reference',
+            'client_latitude', 'client_longitude', 'destination_confirmed',
+            'payment_method', 'needs_change', 'cash_bill_amount'
+        }
+        if request.args or set(request.form) - allowed_fields or set(request.files) - {'payment_receipt'}:
+            abort(400, description='Campos de pedido no permitidos.')
+        if any(len(request.form.getlist(key)) != 1 for key in request.form):
+            abort(400, description='Campos duplicados.')
+
     if current_user.get_pending_order():
         flash('Ya tienes un pedido pendiente.', 'warning')
         return redirect(url_for('main.dashboard'))
@@ -504,6 +515,12 @@ def create_order():
     
     form = OrderForm()
     if form.validate_on_submit():
+        try:
+            destination_lat, destination_lon = validar_coordenadas(
+                form.client_latitude.data, form.client_longitude.data
+            )
+        except (TypeError, ValueError):
+            abort(400, description='Punto de entrega inválido.')
         total = 0
         order_items_temp = []
         tiene_importacion = False
@@ -564,6 +581,8 @@ def create_order():
             user_id=current_user.id,
             business_id=business_id or 1,
             total_amount=total,
+            client_latitude=destination_lat,
+            client_longitude=destination_lon,
             shipping_address=form.shipping_address.data,
             shipping_phone=form.shipping_phone.data,
             shipping_reference=form.shipping_reference.data or '',
@@ -574,17 +593,12 @@ def create_order():
             payment_receipt_url=receipt_path
         )
         
-        user_location = session.get('user_location')
-        
-        if user_location:
-            order.client_latitude = user_location['latitude']
-            order.client_longitude = user_location['longitude']
-        
-        if user_location and business_id:
+        # The confirmed destination belongs to this order, not to live GPS/session updates.
+        if business_id:
             business = Business.query.get(business_id)
             if business and business.latitude and business.longitude:
                 distancia = calcular_distancia_negocio_km(
-                    user_location['latitude'], user_location['longitude'],
+                    destination_lat, destination_lon,
                     business.latitude, business.longitude
                 )
                 order.delivery_fee = 10000 + (distancia * 1000)
@@ -635,7 +649,7 @@ def create_order():
             })
     
     total = sum(item['subtotal'] for item in cart_items)
-    return render_template('order_confirm.html', form=form, cart_items=cart_items, total=total)
+    return render_template('order_confirm.html', form=form, cart_items=cart_items, total=total), (400 if request.method == 'POST' else 200)
 
 
 @main_bp.route('/order/<int:order_id>/receive', methods=['POST'])
@@ -1868,16 +1882,18 @@ def mark_delivered(order_id):
 @limiter.exempt
 def update_location_client():
     data = request.get_json()
-    
-    if not data.get('latitude') or not data.get('longitude'):
-        return jsonify({'error': 'Coordenadas requeridas'}), 400
-    
+    if not isinstance(data, dict) or set(data) - {'latitude', 'longitude'}:
+        return jsonify({'error': 'Campos de ubicación no permitidos'}), 400
+    try:
+        latitude, longitude = validar_coordenadas(data.get('latitude'), data.get('longitude'))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Coordenadas inválidas'}), 400
+    # Session location never edits an already confirmed order.
     session['user_location'] = {
-        'latitude': data['latitude'],
-        'longitude': data['longitude'],
+        'latitude': latitude,
+        'longitude': longitude,
         'updated_at': datetime.utcnow().isoformat()
     }
-    
     return jsonify({'status': 'ok'})
 
 

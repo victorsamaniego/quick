@@ -35,32 +35,6 @@
         display: none !important; 
     }
     
-    .live-tracking-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        background: #d4edda;
-        color: #155724;
-        padding: 5px 12px;
-        border-radius: 20px;
-        font-size: 0.85rem;
-        font-weight: bold;
-        margin-top: 10px;
-    }
-    
-    .live-tracking-badge::before {
-        content: '';
-        width: 8px;
-        height: 8px;
-        background: #28a745;
-        border-radius: 50%;
-        animation: pulse 2s infinite;
-    }
-    
-    @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.5; }
-    }
 </style>
 {% endblock %}
 
@@ -91,17 +65,16 @@
             <!-- Mapa de Ubicación -->
             <div class="card border-0 shadow-sm mb-4">
                 <div class="card-body">
-                    <h5 class="fw-bold mb-3">📍 Tu Ubicación</h5>
-                    <div id="locationMap" style="min-height: 400px;"></div>
-                    <small class="text-muted d-block mb-2">
-                        ℹ️ Permite el acceso a tu ubicación para calcular el costo de envío exacto.
-                    </small>
-                    <button id="getLocationBtn" class="btn btn-outline-primary btn-sm">
-                        📍 Obtener mi ubicación
-                    </button>
-                    <div id="liveTrackingBadge" class="live-tracking-badge" style="display: none;">
-                        📡 Compartiendo ubicación en tiempo real con el negocio
+                    <h5 class="fw-bold mb-3">¿Dónde querés recibirlo?</h5>
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        <button type="button" id="getLocationBtn" class="btn btn-outline-primary">Usar mi ubicación actual</button>
+                        <button type="button" id="chooseLocationBtn" class="btn btn-outline-warning">Elegir otro punto en el mapa</button>
                     </div>
+                    <div id="locationMap" style="min-height: 400px;"></div>
+                    <p class="small text-muted">Tocá el mapa o arrastrá el marcador hasta el lugar donde querés recibir el pedido. La dirección escrita debe corresponder a ese punto.</p>
+                    <p id="destinationStatus" class="small" role="status" aria-live="polite">Elegí un punto de entrega y confirmalo.</p>
+                    <button type="button" id="confirmLocationBtn" class="btn btn-outline-success" disabled>Confirmar ubicación de entrega</button>
+
                 </div>
             </div>
             
@@ -109,8 +82,11 @@
             <div class="card border-0 shadow-sm mb-4">
                 <div class="card-body">
                     <h5 class="fw-bold mb-3">Datos de Envío y Pago</h5>
-                    <form method="POST" id="orderForm" enctype="multipart/form-data">
+                    <form method="POST" id="orderForm" data-subtotal="{{ total }}" data-importation="{{ 'true' if tiene_importacion else 'false' }}" enctype="multipart/form-data">
                         {{ form.hidden_tag() }}
+                        {% if form.errors %}
+                        <div class="alert alert-danger">Revisá los datos y confirmá el punto de entrega antes de realizar el pedido.</div>
+                        {% endif %}
                         
                         <div class="mb-3">
                             {{ form.shipping_address.label(class="form-label fw-semibold") }}
@@ -242,178 +218,10 @@
     </div>
 </div>
 
-<input type="hidden" id="clientLatitude" name="client_latitude">
-<input type="hidden" id="clientLongitude" name="client_longitude">
 {% endblock %}
 
 {% block extra_js %}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous"></script>
 
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    let map = null;
-    let userMarker = null;
-    let userLocation = null;
-    let locationInterval = null;
-    
-    const defaultLat = -25.2637;
-    const defaultLon = -57.5759;
-    
-    function initMap(lat, lon) {
-        const mapContainer = document.getElementById('locationMap');
-        if (!mapContainer) return;
-        if (map) map.remove();
-        
-        setTimeout(() => {
-            try {
-                map = L.map('locationMap').setView([lat, lon], 14);
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '© OpenStreetMap contributors',
-                    maxZoom: 19
-                }).addTo(map);
-                
-                const userIcon = L.divIcon({
-                    className: 'custom-marker',
-                    html: '<div style="background:#D4AF37;color:white;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow: 0 2px 5px rgba(0,0,0,0.3);">📍</div>',
-                    iconSize: [30, 30],
-                    iconAnchor: [15, 30]
-                });
-                
-                userMarker = L.marker([lat, lon], {icon: userIcon}).addTo(map)
-                    .bindPopup('📍 Tu ubicación actual').openPopup();
-                
-                setTimeout(() => map.invalidateSize(), 100);
-            } catch (error) {
-                console.error('Error al inicializar el mapa:', error);
-            }
-        }, 200);
-    }
-    
-    initMap(defaultLat, defaultLon);
-    
-    function sendLocationToServer(lat, lon) {
-        fetch('/api/location/update', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ latitude: lat, longitude: lon })
-        })
-        .then(response => response.json())
-        .then(data => console.log('✅ Ubicación guardada'))
-        .catch(error => console.error('❌ Error:', error));
-    }
-    
-    function startLiveTracking() {
-        if (locationInterval) clearInterval(locationInterval);
-        document.getElementById('liveTrackingBadge').style.display = 'inline-flex';
-        
-        locationInterval = setInterval(function() {
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(function(position) {
-                    const lat = position.coords.latitude;
-                    const lon = position.coords.longitude;
-                    userLocation = { latitude: lat, longitude: lon };
-                    if (userMarker) userMarker.setLatLng([lat, lon]);
-                    sendLocationToServer(lat, lon);
-                    if (typeof window.socket !== 'undefined') {
-                        window.socket.emit('user_location_update', {
-                            user_id: {{ current_user.id if current_user.is_authenticated else 0 }},
-                            latitude: lat, longitude: lon,
-                            timestamp: new Date().toISOString()
-                        });
-                    }
-                }, function(error) { console.error('Error:', error); }, { enableHighAccuracy: true, timeout: 10000 });
-            }
-        }, 15000);
-    }
-    
-    document.getElementById('getLocationBtn').addEventListener('click', function() {
-        if (!navigator.geolocation) { alert('❌ Tu navegador no soporta geolocalización'); return; }
-        
-        this.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Obteniendo...';
-        this.disabled = true;
-        
-        navigator.geolocation.getCurrentPosition(
-            function(position) {
-                const lat = position.coords.latitude;
-                const lon = position.coords.longitude;
-                userLocation = { latitude: lat, longitude: lon };
-                initMap(lat, lon);
-                document.getElementById('clientLatitude').value = lat;
-                document.getElementById('clientLongitude').value = lon;
-                sendLocationToServer(lat, lon);
-                calculateDeliveryFee(lat, lon);
-                document.getElementById('confirmBtn').disabled = false;
-                document.getElementById('getLocationBtn').innerHTML = '✅ Ubicación actualizada';
-                document.getElementById('getLocationBtn').classList.add('btn-success');
-                document.getElementById('getLocationBtn').classList.remove('btn-outline-primary');
-                startLiveTracking();
-            },
-            function(error) {
-                alert('⚠️ No se pudo obtener tu ubicación.');
-                userLocation = { latitude: defaultLat, longitude: defaultLon };
-                document.getElementById('clientLatitude').value = defaultLat;
-                document.getElementById('clientLongitude').value = defaultLon;
-                calculateDeliveryFee(defaultLat, defaultLon);
-                document.getElementById('confirmBtn').disabled = false;
-                document.getElementById('getLocationBtn').innerHTML = '📍 Intentar de nuevo';
-                document.getElementById('getLocationBtn').disabled = false;
-            },
-            { enableHighAccuracy: true, timeout: 10000 }
-        );
-    });
-    
-    function calculateDeliveryFee(lat, lon) {
-        fetch('/api/location/calculate-delivery', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ latitude: lat, longitude: lon })
-        })
-        .then(res => res.json())
-        .then(data => {
-            document.getElementById('deliveryFeeBox').style.display = 'block';
-            document.getElementById('deliveryFeeRow').style.display = 'flex';
-            document.getElementById('deliveryFeeValue').textContent = data.fee_formatted;
-            document.getElementById('deliveryFeeSummary').textContent = data.fee_formatted;
-            if (data.distance_km) {
-                document.getElementById('distanceValue').textContent = `📏 Distancia: ${data.distance_km} km`;
-            }
-            const subtotal = {{ total }};
-            const totalWithDelivery = subtotal + data.delivery_fee;
-            document.getElementById('totalValue').textContent = `GS ${totalWithDelivery.toLocaleString('es-PY')}`;
-        })
-        .catch(err => console.error('Error:', err));
-    }
-    
-    window.togglePayment = function() {
-        const isCash = document.getElementById('pay_cash') && document.getElementById('pay_cash').checked;
-        const isTransfer = document.getElementById('pay_transfer').checked;
-        const isQr = document.getElementById('pay_qr').checked;
-        const cashFields = document.getElementById('cash_fields');
-        if (cashFields) cashFields.classList.toggle('d-none', !isCash);
-        document.getElementById('transfer_fields').classList.toggle('d-none', !isTransfer);
-        document.getElementById('qr_fields').classList.toggle('d-none', !isQr);
-    }
-    
-    {% if tiene_importacion %}
-        document.getElementById('pay_transfer').checked = true;
-    {% else %}
-        document.getElementById('pay_cash').checked = true;
-    {% endif %}
-    togglePayment();
-    
-    document.getElementById('orderForm').addEventListener('submit', function(e) {
-        const lat = document.getElementById('clientLatitude').value;
-        const lon = document.getElementById('clientLongitude').value;
-        if (!lat || !lon || lat == defaultLat) {
-            e.preventDefault();
-            alert('⚠️ Por favor, obtené tu ubicación antes de confirmar.');
-            document.getElementById('getLocationBtn').scrollIntoView({ behavior: 'smooth' });
-        }
-    });
-    
-    window.addEventListener('beforeunload', function() {
-        if (locationInterval) clearInterval(locationInterval);
-    });
-});
-</script>
+<script src="{{ url_for('static', filename='js/order_destination.js') }}"></script>
 {% endblock %}
