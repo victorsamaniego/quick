@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Dashboard - QuickGo{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="anonymous">
+{% endblock %}
+
 {% block content %}
 <div class="container py-4">
     <!-- Saludo -->
@@ -376,10 +380,7 @@
                             <div>
                                 <small class="text-muted d-block">Dirección</small>
                                 <strong>{{ order.shipping_address }}</strong>
-                                {% if order.client_latitude is not none and order.client_longitude is not none %}
-                                <small class="d-block">Punto de entrega guardado: {{ order.client_latitude }}, {{ order.client_longitude }}</small>
-                                <a href="https://www.google.com/maps/search/?api=1&amp;query={{ order.client_latitude }},{{ order.client_longitude }}" target="_blank" rel="noopener">Ver destino en el mapa</a>
-                                {% endif %}
+                                {% include '_order_destination.html' %}
                             </div>
                         </div>
                         <div class="d-flex align-items-center">
@@ -455,6 +456,8 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous"></script>
+<script src="{{ url_for('static', filename='js/order_destination_map.js') }}"></script>
 <script>
 window.currentUser = {
     id: {{ current_user.id }},

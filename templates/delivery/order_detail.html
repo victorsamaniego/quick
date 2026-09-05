@@ -57,6 +57,7 @@
                     <hr>
                     <h6 class="fw-bold">📍 Dirección de Entrega:</h6>
                     <p>{{ order.shipping_address }}</p>
+                    {% include '_order_destination.html' %}
                     {% if order.shipping_reference %}
                     <p class="text-muted"><strong>Referencia:</strong> {{ order.shipping_reference }}</p>
                     {% endif %}
@@ -72,14 +73,14 @@
                     
                     <div class="row g-2 mt-2">
                         <div class="col-6">
-                            {% if order.client_latitude and order.client_longitude %}
+                            {% if order.client_latitude is not none and order.client_longitude is not none %}
                             <a href="https://www.google.com/maps/dir/?api=1&destination={{ order.client_latitude }},{{ order.client_longitude }}" target="_blank" class="btn btn-outline-info w-100">🗺️ Google Maps</a>
                             {% else %}
                             <a href="https://www.google.com/maps/search/?api=1&query={{ order.shipping_address | urlencode }}" target="_blank" class="btn btn-outline-info w-100">🗺️ Google Maps</a>
                             {% endif %}
                         </div>
                         <div class="col-6">
-                            {% if order.client_latitude and order.client_longitude %}
+                            {% if order.client_latitude is not none and order.client_longitude is not none %}
                             <a href="https://waze.com/ul?ll={{ order.client_latitude }},{{ order.client_longitude }}&navigate=yes" target="_blank" class="btn btn-outline-primary w-100">🚗 Waze</a>
                             {% else %}
                             <a href="https://waze.com/ul?q={{ order.shipping_address | urlencode }}&navigate=yes" target="_blank" class="btn btn-outline-primary w-100">🚗 Waze</a>
@@ -198,8 +199,9 @@
 {% endblock %}
 
 {% block extra_js %}
-{% if order.business and order.business.latitude and order.business.longitude %}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="{{ url_for('static', filename='js/order_destination_map.js') }}"></script>
+{% if order.business and order.business.latitude and order.business.longitude %}
 <script>
 const map = L.map('map').setView([{{ order.business.latitude }}, {{ order.business.longitude }}], 15);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
