@@ -10,6 +10,7 @@
         </div>
     </div>
 
+    <section id="realtime-orders">
     {% if requests %}
         <div class="row g-3">
             {% for item in requests %}
@@ -51,9 +52,9 @@
                                 <small class="text-muted">
                                     Expira en: 
                                     {% if req.expires_at %}
-                                        {% set time_left = (req.expires_at - now).total_seconds() | int %}
+                                        {% set time_left = item.remaining %}
                                         {% if time_left > 0 %}
-                                            {{ (time_left // 60) | int }}:{{ (time_left % 60) | string | pad(2, '0') }}
+                                            {{ (time_left // 60) | int }}:{{ '%02d' | format(time_left % 60) }}
                                         {% else %}
                                             Expirado
                                         {% endif %}
@@ -96,12 +97,13 @@
             </div>
         </div>
     {% endif %}
+</section>
 </div>
 
 <script>
-// Recargar cada 15 segundos para ver nuevas solicitudes
-setTimeout(() => {
-    location.reload();
+// Expiration recovery is silent and only refreshes the list.
+setInterval(() => {
+    window.QuickRealtime?.refreshOrders();
 }, 15000);
 </script>
 {% endblock %}

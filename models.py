@@ -510,7 +510,10 @@ class DeliveryRequest(db.Model):
     def is_expired(self):
         if not self.expires_at:
             return False
-        return datetime.utcnow() > self.expires_at
+        expires = self.expires_at
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) > expires
     
     def __repr__(self):
         return f'<DeliveryRequest #{self.id} - {self.status}>'

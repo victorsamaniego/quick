@@ -196,7 +196,9 @@ function showMessage(message, type) {
 // 🔥 SOCKETIO - ACTUALIZACIONES EN TIEMPO REAL
 if (typeof window.socket !== 'undefined') {
     // Unirse a la room del pedido
-    window.socket.emit('join', { room: `order_${orderId}` });
+    const joinOrder = () => window.socket.emit('join', { room: `order_${orderId}` });
+    window.QuickRealtime.on('connect', joinOrder);
+    if (window.socket.connected) joinOrder();
     
     // Escuchar actualización de delivery fee
     window.socket.on('delivery_fee_updated', function(data) {

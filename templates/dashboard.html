@@ -29,6 +29,7 @@
         </div>
     </div>
 
+    <section id="realtime-orders">
     <!-- Estado del Pedido - Stats Cards -->
     <div class="row g-3 mb-4">
         <div class="col-md-4">
@@ -269,6 +270,7 @@
         </div>
     </div>
 
+    </section>
     <!-- Productos Destacados -->
     <div class="row mb-4">
         <div class="col-12">
@@ -470,7 +472,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         window.socket.emit('join_user_room', { user_id: {{ current_user.id }} });
         
-        window.socket.on('order_status_update', function(data) {
+        window.QuickRealtime.on('order_status_update', function(data) {
             if (data.user_id == {{ current_user.id }}) {
                 console.log('📦 Actualización de pedido:', data);
                 
@@ -480,13 +482,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     data.new_status === 'delivered' ? 'success' : 'info'
                 );
                 
-                setTimeout(() => {
-                    location.reload();
-                }, 2000);
+
             }
         });
         
-        window.socket.on('new_chat_message', function(data) {
+        window.QuickRealtime.on('new_chat_message', function(data) {
             console.log('💬 Nuevo mensaje de chat:', data);
             
             showNotification(
@@ -503,10 +503,7 @@ function showNotification(title, message, type = 'info') {
     notification.className = `alert alert-${type === 'success' ? 'success' : 'info'} alert-dismissible fade show position-fixed top-0 end-0 m-3 shadow`;
     notification.style.zIndex = '9999';
     notification.style.minWidth = '300px';
-    notification.innerHTML = `
-        <strong>${title}</strong><br>${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    `;
+    notification.textContent = `${title}: ${message}`;
     document.body.appendChild(notification);
     
     setTimeout(() => {
