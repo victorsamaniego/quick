@@ -158,6 +158,7 @@
         isDelivery: {{ current_user.is_delivery|tojson }}, businessId: {{ current_user.business_id|tojson }}
     }{% else %}null{% endif %};
     </script>
+    <script src="{{ url_for('static', filename='js/notifications_audio.js') }}"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     {% block extra_js %}{% endblock %}
     

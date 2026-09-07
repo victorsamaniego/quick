@@ -1369,7 +1369,7 @@ def update_order_status(order_id):
         db.session.commit()
         publish_status(order, old_status)
         if old_status == order.status and old_driver != order.delivery_driver_id and order.delivery_driver_id:
-            publish('delivery_assigned', {'event_id': uuid4().hex, 'order_id': order.id}, order_rooms(order))
+            publish('delivery_assigned', {'event_id': uuid4().hex, 'order_id': order.id, 'delivery_driver_id': order.delivery_driver_id}, order_rooms(order))
         
         flash(f'Estado actualizado: {order.status_label}', 'success')
     else:
@@ -1512,6 +1512,7 @@ def request_delivery(order_id):
             
             publish('new_delivery_request', {
                 'request_id': delivery_request.id,
+                'delivery_driver_id': delivery.id,
                 'order_id': order.id,
                 'business_name': current_user.business.name,
                 'distance_km': distance,

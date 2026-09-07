@@ -1,5 +1,6 @@
 """Shared transport and server-side audiences. Importing this never creates an app."""
 import re
+import time
 from uuid import uuid4
 from flask import current_app, request
 from flask_login import current_user
@@ -58,7 +59,7 @@ def publish(event, payload, rooms):
             if not allowed_room(user, room):
                 socketio.server.leave_room(sid, room, namespace='/')
     try:
-        socketio.emit(event, payload, to=rooms)
+        socketio.emit(event, {**payload, 'emitted_at': time.time()}, to=rooms)
     except Exception:
         current_app.logger.exception('Realtime emission failed after persistence: %s', event)
 
@@ -76,7 +77,8 @@ def publish_status(order, old_status):
     publish('order_status_update', {
         'event_id': uuid4().hex, 'order_id': order.id, 'user_id': order.user_id,
         'business_id': order.business_id, 'status': order.status,
-        'new_status': order.status, 'status_label': order.status_label,
+        'new_status': order.status, 'old_status': old_status,
+        'delivery_driver_id': order.delivery_driver_id, 'status_label': order.status_label,
         'status_color': order.status_color,
     }, order_rooms(order))
 
@@ -88,6 +90,7 @@ def register_realtime(app):
     def connect(auth=None):
         if not current_user.is_authenticated or not current_user.is_active:
             return False
+        socketio.emit('realtime_ready', {'live_since': time.time()}, to=request.sid)
         app.extensions['realtime_identities'][request.sid] = current_user.id
         join_room(f'user_{current_user.id}')
         if current_user.is_admin and current_user.business_id:

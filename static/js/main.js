@@ -6,37 +6,24 @@
     const socket = window.socket || (user && typeof window.io === 'function' ? window.io() : null);
     if (socket) window.socket = socket;
     const listeners = new Map(), seen = new Set();
-    let audio, unlocked = false, muted = false;
-    try { muted = localStorage.getItem('quickgo-sound') === 'off'; } catch (_) {}
+    const soundSeen = new Set();
+    const storageKey = 'quickgo-audio-seen:' + user?.id;
+    try { for (const key of JSON.parse(sessionStorage.getItem(storageKey) || '[]')) soundSeen.add(key); } catch (_) {}
+    let liveSince = Infinity;
+    function rememberSound(key) {
+        if (!key || soundSeen.has(key)) return false;
+        soundSeen.add(key);
+        try { sessionStorage.setItem(storageKey, JSON.stringify([...soundSeen])); } catch (_) {}
+        return true;
+    }
     function remember(key) {
         if (!key) return true;
+        rememberSound(key);
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
     }
-    async function unlock() {
-        try {
-            const AudioContext = window.AudioContext || window.webkitAudioContext;
-            if (!AudioContext) return;
-            audio = audio || new AudioContext();
-            await audio.resume();
-            unlocked = audio.state === 'running';
-        } catch (_) { unlocked = false; }
-    }
-    function sound(type) {
-        if (muted || !unlocked || !audio) return;
-        try {
-            if (audio.state !== 'running') { unlocked = false; return; }
-            const oscillator = audio.createOscillator(), gain = audio.createGain();
-            oscillator.connect(gain); gain.connect(audio.destination);
-            oscillator.frequency.value = {chat: 660, order: 880, delivery: 740, complete: 1046}[type] || 660;
-            gain.gain.setValueAtTime(0.06, audio.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.18);
-            oscillator.start(); oscillator.stop(audio.currentTime + 0.2);
-        } catch (_) { /* Audio never interrupts transport/rendering. */ }
-    }
-    document.addEventListener('pointerdown', unlock);
-    document.addEventListener('keydown', unlock);
+    const sound = type => window.QuickGoAudio?.play(type);
     function on(event, fn) {
         if (!listeners.has(event)) {
             listeners.set(event, new Set());
@@ -48,19 +35,30 @@
     function dispatch(event, data) {
         data = data || {};
         if (event === 'new_order' && (!user || !user.isAdmin || Number(data.business_id) !== Number(user.businessId))) return;
-        let key;
-        if (event === 'new_chat_message') key = 'chat:' + data.message?.id;
-        if (event === 'private_chat_message') key = data.channel + ':' + data.message?.id;
-        if (event === 'new_order') key = 'order:' + data.order_id;
-        if (event === 'new_delivery_request') key = 'request:' + data.request_id;
-        if (event === 'order_status_update' || event === 'delivery_assigned') key = data.event_id;
-        if (!remember(key)) return;
-        if ((event === 'new_chat_message' || event === 'private_chat_message') && Number(data.message?.sender_id) !== Number(user?.id)) sound('chat');
-        if (event === 'new_order') sound('order');
-        if (event === 'delivery_assigned' && data.event_id && user?.isDelivery) sound('delivery');
-        if (event === 'new_delivery_request' && user?.isDelivery) sound('delivery');
-        if (event === 'order_status_update' && data.event_id && data.status === 'delivered') sound('complete');
-        else if (event === 'order_status_update' && data.event_id && user?.isDelivery) sound('delivery');
+        let key, type;
+        if (event === 'new_chat_message' && data.message?.id != null) key = 'chat:' + data.message.id;
+        if (event === 'private_chat_message' && data.channel && data.message?.id != null) key = data.channel + ':' + data.message.id;
+        if (event === 'new_order' && data.order_id != null) { key = 'order:' + data.order_id; type = 'new_order'; }
+        const driver = user?.isDelivery && Number(data.delivery_driver_id) === Number(user.id);
+        if (event === 'new_delivery_request' && data.request_id != null) {
+            key = 'request:' + data.request_id;
+            if (driver) type = 'delivery';
+        }
+        if (event === 'delivery_assigned' && data.event_id && data.order_id != null) {
+            key = 'assignment:' + data.order_id + ':' + data.event_id;
+            if (driver) type = 'delivery';
+        }
+        if (event === 'order_status_update' && data.event_id && data.order_id != null) {
+            key = 'status:' + data.order_id + ':' + data.status;
+            if (data.status === 'delivered' && data.old_status !== data.status) type = 'completed';
+            else if (driver) type = 'delivery';
+        }
+        if ((event === 'new_chat_message' || event === 'private_chat_message') && data.message?.sender_id != null && Number(data.message.sender_id) !== Number(user?.id)) type = 'message';
+        const freshSound = rememberSound(key);
+        // Audio deduplication never prevents a visual update.
+        if (freshSound && type && Number.isFinite(data.emitted_at) && data.emitted_at >= liveSince) {
+            try { sound(type); } catch (_) {}
+        }
         for (const fn of listeners.get(event) || []) {
             try { fn(data); } catch (error) { console.error('Realtime listener failed', error); }
         }
@@ -79,8 +77,15 @@
                 const page = new DOMParser().parseFromString(await response.text(), 'text/html');
                 const fresh = page.getElementById('realtime-orders');
                 if (!fresh) throw new Error('Listado no disponible');
+                // Reuse the server-rendered values, including the conditional badge
+                // and card classes. Other order pages may not have these regions.
+                const regions = ['realtime-total-orders', 'realtime-pending-orders', 'realtime-orders-card']
+                    .map(id => [document.getElementById(id), page.getElementById(id)])
+                    .filter(([current]) => current);
+                if (regions.some(([, replacement]) => !replacement)) throw new Error('Resumen de pedidos no disponible');
                 if (document.querySelector('.modal.show')) { dirty = true; break; }
                 document.getElementById('realtime-orders').replaceChildren(...fresh.childNodes);
+                for (const [current, replacement] of regions) current.replaceWith(replacement);
                 if (user?.isAdmin) {
                     page.querySelectorAll('.modal[id]').forEach(modal => {
                         const old = document.getElementById(modal.id);
@@ -121,6 +126,8 @@
         refreshOrders();
     });
     on('delivery_assigned', refreshOrders);
+    on('realtime_ready', data => { liveSince = Number.isFinite(data.live_since) ? data.live_since : Infinity; });
+    on('disconnect', () => { liveSince = Infinity; });
     on('connect', refreshOrders);
     document.addEventListener('hidden.bs.modal', () => { if (dirty) refreshOrders(); });
     document.addEventListener('DOMContentLoaded', () => {
@@ -129,9 +136,9 @@
         if (!user) return;
         const button = document.createElement('button');
         button.type = 'button'; button.className = 'btn btn-sm btn-outline-secondary';
-        const update = () => { button.textContent = muted ? 'Activar sonidos' : 'Silenciar sonidos'; button.setAttribute('aria-pressed', String(!muted)); };
+        const update = () => { button.textContent = window.QuickGoAudio.isMuted() ? 'Activar sonidos' : 'Silenciar sonidos'; button.setAttribute('aria-pressed', String(!window.QuickGoAudio.isMuted())); };
         update();
-        button.addEventListener('click', () => { muted = !muted; try { localStorage.setItem('quickgo-sound', muted ? 'off' : 'on'); } catch (_) {} update(); unlock(); });
+        button.addEventListener('click', () => { window.QuickGoAudio.setMuted(!window.QuickGoAudio.isMuted()); update(); window.QuickGoAudio.unlock(); });
         (document.querySelector('footer .container') || document.body).appendChild(button);
     });
 })(window, document);

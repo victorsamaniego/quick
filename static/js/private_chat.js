@@ -16,6 +16,7 @@
                 const page = new DOMParser().parseFromString(await response.text(), 'text/html');
                 const fresh = page.getElementById('private-chat');
                 if (!fresh) return;
+                fresh.querySelectorAll('[data-private-message-id]').forEach(el => window.QuickRealtime.remember(channel + ':' + el.dataset.privateMessageId));
                 box.replaceChildren(...fresh.childNodes);
                 box.scrollTop = box.scrollHeight;
             }
