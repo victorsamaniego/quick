@@ -1,4 +1,5 @@
 from uuid import uuid4
+from inventory import inventory_summary, inventory_money
 from realtime import can_access_order, publish, publish_status, order_rooms
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, session, abort
 from flask_login import login_user, logout_user, login_required, current_user
@@ -1170,6 +1171,17 @@ def reset_user_password(user_id):
     
     flash(f'🔑 Contraseña reseteada. Nueva contraseña temporal: {new_password}', 'success')
     return redirect(url_for('admin.manage_users'))
+
+
+@admin_bp.route('/inventory')
+@login_required
+@business_admin_required
+@subscription_required
+def inventory():
+    if not current_user.business_id or current_user.is_delivery or current_user.is_super_admin:
+        abort(403)
+    products = Product.query.filter_by(business_id=current_user.business_id).order_by(Product.name, Product.id).all()
+    return render_template('admin/inventory.html', inventory=inventory_summary(products), money=inventory_money)
 
 
 @admin_bp.route('/products')

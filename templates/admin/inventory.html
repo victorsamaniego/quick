@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Inventario - Quick Go{% endblock %}
+{% block content %}
+<div class="container py-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <h2 class="fw-bold mb-0">Inventario</h2>
+        <a class="btn btn-outline-secondary" href="{{ url_for('admin.manage_products') }}">Gestionar productos</a>
+    </div>
+    <p class="text-muted">Todos los productos de tu negocio, activos e inactivos. Valoración a precio de venta actual, no a costo de compra.</p>
+    <div class="row g-3 mb-3">
+        {% for label, value in [('Total de productos', inventory.product_count), ('Unidades en stock', inventory.units), ('Valor total a precio de venta', money(inventory.value))] %}
+        <div class="col-12 col-md-4"><div class="card shadow-sm h-100"><div class="card-body">
+            <p class="text-muted mb-1">{{ label }}</p><strong class="fs-4 text-break">{{ value }}</strong>
+        </div></div></div>
+        {% endfor %}
+    </div>
+    <p>Sin stock: <strong>{{ inventory.out_of_stock }}</strong> · Stock bajo (1–9 unidades): <strong>{{ inventory.low_stock }}</strong></p>
+    <p class="small text-muted">Datos al abrir esta página. Los valores ausentes, negativos o inválidos se muestran como 0.</p>
+    <div class="row g-3">
+        {% for row in inventory.rows %}
+        <div class="col-12 col-md-6 col-xl-4"><article class="card shadow-sm h-100"><div class="card-body">
+            <h3 class="h5 text-break">{{ row.product.name }}</h3>
+            {% if row.stock == 0 %}<span class="badge bg-secondary mb-2">Sin stock</span>
+            {% elif row.stock < 10 %}<span class="badge bg-warning text-dark mb-2">Stock bajo</span>{% endif %}
+            <dl class="mb-0">
+                <dt>Stock</dt><dd>{{ row.stock }}</dd>
+                <dt>Precio unitario de venta</dt><dd class="text-break">{{ money(row.price) }}</dd>
+                <dt>Valor en stock</dt><dd class="text-break mb-0">{{ money(row.value) }}</dd>
+            </dl>
+        </div></article></div>
+        {% else %}<div class="col-12"><p class="alert alert-info">Todavía no hay productos en tu inventario.</p></div>{% endfor %}
+    </div>
+    <p class="fw-bold mt-4 text-break">Total general: {{ money(inventory.value) }}</p>
+</div>
+{% endblock %}

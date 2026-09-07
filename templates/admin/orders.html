@@ -236,7 +236,7 @@
                             <tr>
                                 <td>{{ item.product_name | default('Producto eliminado') }}</td>
                                 <td>x{{ item.quantity | default(1) }}</td>
-                                <td>GS {{ "{:,.0f}".format(item.price | default(0)) }}</td>
+                                <td>GS {{ "{:,.0f}".format(item.price_at_purchase) }}</td>
                                 <td><strong>GS {{ "{:,.0f}".format(item.subtotal | default(0)) }}</strong></td>
                             </tr>
                             {% endfor %}
