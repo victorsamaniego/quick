@@ -428,7 +428,7 @@
                                     {% endif %}
                                 </td>
                                 <td class="text-center">x{{ item.quantity | default(1) }}</td>
-                                <td class="text-end">GS {{ "{:,.0f}".format(item.price | default(0)) }}</td>
+                                <td class="text-end">GS {{ "{:,.0f}".format(item.price_at_purchase) }}</td>
                                 <td class="text-end"><strong>GS {{ "{:,.0f}".format(item.subtotal | default(0)) }}</strong></td>
                             </tr>
                             {% endfor %}
