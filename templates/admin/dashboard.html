@@ -178,7 +178,7 @@
                         </div>
                         <div>
                             <p class="text-muted small mb-1">Total Pedidos</p>
-                            <h3 class="fw-bold mb-0">{{ total_orders }}</h3>
+                            <h3 class="fw-bold mb-0" id="realtime-total-orders">{{ total_orders }}</h3>
                         </div>
                     </div>
                 </div>
@@ -193,7 +193,7 @@
                         </div>
                         <div>
                             <p class="text-muted small mb-1">Pedidos Pendientes</p>
-                            <h3 class="fw-bold mb-0">{{ pending_orders }}</h3>
+                            <h3 class="fw-bold mb-0" id="realtime-pending-orders">{{ pending_orders }}</h3>
                         </div>
                     </div>
                 </div>
@@ -213,7 +213,7 @@
         
         <!-- ✅ BOTÓN DE PEDIDOS CON ALERTA -->
         <div class="col-md-3">
-            <a href="{{ url_for('admin.manage_orders') }}" 
+            <a id="realtime-orders-card" href="{{ url_for('admin.manage_orders') }}"
                class="btn btn-orders-alert w-100 py-3 {% if pending_orders > 0 %}has-pending{% else %}no-pending{% endif %}">
                 <i class="bi bi-cart-check fs-2 d-block mb-2"></i>
                 <strong>Pedidos</strong>
