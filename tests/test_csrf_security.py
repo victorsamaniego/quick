@@ -6,7 +6,9 @@ from models import Product
 
 
 class CSRFAndRateSecurityTest(unittest.TestCase):
-    tearDown = test_order_destination.OrderDestinationTest.tearDown
+    def tearDown(self):
+        limiter.reset()
+        test_order_destination.OrderDestinationTest.tearDown(self)
     login_as = test_order_destination.OrderDestinationTest.login_as
     checkout = test_order_destination.OrderDestinationTest.checkout
 
