@@ -21,7 +21,7 @@
                         <div class="d-flex justify-content-between align-items-start mb-3">
                             <div>
                                 <h5 class="fw-bold mb-1">
-                                    🏪 {{ req.order.business.name }}
+                                    🏪 {{ req.business.name }}
                                 </h5>
                                 <small class="text-muted">
                                     Pedido #{{ req.order.id }}
@@ -44,7 +44,7 @@
                                 <i class="bi bi-geo-alt text-primary me-2 mt-1"></i>
                                 <div>
                                     <small class="text-muted d-block">Entregar en:</small>
-                                    <strong>{{ req.order.shipping_address[:50] }}...</strong>
+                                    <strong>Dirección disponible al aceptar</strong>
                                 </div>
                             </div>
                             <div class="d-flex align-items-center">
@@ -66,12 +66,14 @@
                         <div class="d-grid gap-2">
                             <form action="{{ url_for('main.accept_delivery_request', request_id=req.id) }}" 
                                   method="POST" class="d-inline">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="btn btn-success w-100">
                                     ✅ Aceptar Pedido
                                 </button>
                             </form>
                             <form action="{{ url_for('main.reject_delivery_request', request_id=req.id) }}" 
                                   method="POST" class="d-inline">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="btn btn-outline-danger w-100">
                                     ❌ Rechazar
                                 </button>

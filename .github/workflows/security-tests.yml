@@ -1,0 +1,36 @@
+name: Security and regression tests
+on:
+  pull_request:
+  push:
+    branches: [main, 'codex/**']
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install declared dependencies and audit tool
+        run: |
+          python -m pip install pip==26.2
+          python -m pip install -r requirements.txt pip-audit==2.9.0
+          python -m pip check
+      - name: Python security and existing regressions (isolated SQLite)
+        run: python -m unittest discover -s tests -v
+      - name: JavaScript security and existing regressions
+        run: node --test tests/*.test.cjs
+      - name: Audit installed dependencies
+        run: python -m pip_audit --progress-spinner off
+      - name: Build and check non-root runtime
+        run: |
+          docker build -t quickgo-security-ci .
+          docker run --rm -e DATABASE_URL=sqlite:///:memory: -e FLASK_ENV=testing quickgo-security-ci python -c "import os,secrets; assert os.geteuid()!=0; os.environ['SECRET_KEY']=secrets.token_urlsafe(40); from app import app; assert app"

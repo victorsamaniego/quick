@@ -16,6 +16,7 @@
             <div class="card border-0 shadow-sm">
                 <div class="card-body">
                     <form method="POST" enctype="multipart/form-data">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 
                         <div class="row mb-3">
 <div class="col-md-4"><label class="form-label">Latitud</label><input class="form-control" type="number" step="any" name="latitude" min="-90" max="90" value="{{ request.form.get('latitude', business.latitude if business and business.latitude is not none else '') }}" required></div>
@@ -226,7 +227,8 @@
 <script>
 function generarCodigo() {
     fetch('{{ url_for("super_admin.generate_activation_code", business_id=business.id) if business else "#" }}', {
-        method: 'POST'
+        method: 'POST',
+        headers: {'X-CSRFToken': document.getElementById('csrf-token')?.content || ''}
     }).then(response => {
         if (response.ok) {
             window.location.reload();

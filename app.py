@@ -6,7 +6,9 @@ from flask_limiter.util import get_remote_address
 from config import Config
 from models import db, User, Order
 from routes import main_bp, admin_bp, delivery_bp, super_admin_bp
-from extensions import limiter
+from extensions import limiter, csrf
+from runtime_security import configure_runtime_security
+from auth_identity import load_security_user
 import os
 import logging
 from datetime import datetime, timezone
@@ -24,16 +26,14 @@ try:
         api_secret=os.getenv('CLOUDINARY_API_SECRET'),
         secure=True
     )
-    print("✅ Cloudinary configurado correctamente")
-except Exception as e:
-    print(f"⚠️ Error configurando Cloudinary: {e}")
+except Exception:
+    logging.getLogger(__name__).warning('No se pudo configurar el proveedor de imágenes.')
 
 # ============ LOGGING DE SEGURIDAD ============
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
     handlers=[
-        logging.FileHandler('security.log'),
         logging.StreamHandler()
     ]
 )
@@ -55,18 +55,11 @@ def create_app(config_class=Config):
         if database_url.startswith("postgres://"):
             database_url = database_url.replace("postgres://", "postgresql://", 1)
         app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-        print("✅ Conectado a PostgreSQL (Railway)")
     else:
         # Desarrollo local con SQLite
         app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///quickgo.db'
-        print("✅ Usando SQLite local (desarrollo)")
     
-    # 🔥 CRÍTICO: Cookies seguras en producción
-    if os.environ.get('FLASK_ENV') == 'production' or database_url:
-        app.config['SESSION_COOKIE_SECURE'] = True
-        app.config['REMEMBER_COOKIE_SECURE'] = True
-        app.config['SESSION_COOKIE_HTTPONLY'] = True
-        print("🔒 Cookies seguras activadas (HTTPS)")
+    configure_runtime_security(app)
     
     # Crear carpetas necesarias (para compatibilidad local)
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -80,10 +73,11 @@ def create_app(config_class=Config):
    
     
     # 🔥 CORREGIDO: SocketIO detecta automáticamente el mejor modo (gevent/threading)
-    socketio.init_app(app)
+    socketio.init_app(app, max_http_buffer_size=65536)
     
     login_manager.init_app(app)
     limiter.init_app(app)
+    csrf.init_app(app)
     
     # Configurar LoginManager
     login_manager.login_view = 'main.login'
@@ -93,7 +87,7 @@ def create_app(config_class=Config):
     # Flask-Login: cargar usuario
     @login_manager.user_loader
     def load_user(user_id):
-        return User.query.get(int(user_id))
+        return load_security_user(user_id)
     
     # Registrar TODOS los blueprints
     app.register_blueprint(main_bp)
@@ -130,31 +124,33 @@ def create_app(config_class=Config):
         # Evita que tu sitio sea embebido en iframes (anti-clickjacking)
         response.headers['X-Frame-Options'] = 'SAMEORIGIN'
         
+        response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=(self)'
+
         # Previene MIME type sniffing
         response.headers['X-Content-Type-Options'] = 'nosniff'
         
-        # Activa el filtro XSS del navegador
-        response.headers['X-XSS-Protection'] = '1; mode=block'
+        # Legacy browser filters are not a substitute for CSP and escaping.
+        response.headers['X-XSS-Protection'] = '0'
         
         # Referrer Policy
-        response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+        response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
         
         # Política de seguridad de contenido (CSP) - Agregado unpkg.com para Leaflet
-        response.headers['Content-Security-Policy'] = (
-            "default-src 'self'; "
+        response.headers.setdefault('Content-Security-Policy', (
+            "default-src 'self'; frame-ancestors 'self'; "
             "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.socket.io https://unpkg.com; "
             "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com https://unpkg.com; "
             "font-src 'self' https://fonts.gstatic.com https://unpkg.com; "
             "img-src 'self' data: https:; "
             "connect-src 'self' wss: ws: https://unpkg.com https://cdn.socket.io;"
-        )
+        ))
         
         # Fuerza HTTPS en producción
-        if not app.debug:
+        if app.config['SECURITY_PRODUCTION']:
             response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
         
         # Prevenir caché de páginas sensibles
-        if request.path.startswith('/admin') or request.path.startswith('/super-admin'):
+        if request.endpoint != 'static' and (current_user.is_authenticated or request.path.startswith(('/admin', '/super-admin', '/delivery', '/recover', '/chat', '/api', '/order', '/cart', '/soporte'))):
             response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
             response.headers['Pragma'] = 'no-cache'
         
@@ -166,29 +162,29 @@ def create_app(config_class=Config):
         """Registra todas las peticiones para auditoría"""
         if request.method in ['POST', 'PUT', 'DELETE']:
             security_logger.info(
-                f"Petición {request.method} a {request.path} desde {request.remote_addr}"
+                f"Petición {request.method} endpoint={request.endpoint}"
             )
     
     # Error handlers mejorados
     @app.errorhandler(404)
     def not_found_error(error):
-        security_logger.warning(f"404 - {request.path} desde {request.remote_addr}")
+        security_logger.warning('404 - endpoint no encontrado')
         return render_template('error.html', error_code=404, message='Pagina no encontrada'), 404
     
     @app.errorhandler(403)
     def forbidden_error(error):
-        security_logger.warning(f"403 - Acceso denegado a {request.path} desde {request.remote_addr}")
+        security_logger.warning(f'403 - endpoint={request.endpoint}')
         return render_template('error.html', error_code=403, message='Acceso denegado'), 403
     
     @app.errorhandler(500)
     def internal_error(error):
         db.session.rollback()
-        security_logger.error(f"500 - Error interno en {request.path}")
+        security_logger.error(f'500 - endpoint={request.endpoint}')
         return render_template('error.html', error_code=500, message='Error interno del servidor'), 500
     
     @app.errorhandler(429)
     def ratelimit_handler(e):
-        security_logger.warning(f"Rate limit excedido en {request.path} desde {request.remote_addr}")
+        security_logger.warning(f'Rate limit excedido endpoint={request.endpoint}')
         return jsonify({
             'error': 'Demasiadas peticiones. Por favor, intentá de nuevo en unos minutos.'
         }), 429
@@ -218,4 +214,4 @@ def create_app(config_class=Config):
 app = create_app()
 
 if __name__ == '__main__':
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+    socketio.run(app, debug=False, host='0.0.0.0', port=5000)

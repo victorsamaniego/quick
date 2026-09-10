@@ -18,6 +18,7 @@
                     </div>
                     
                     <form method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <div class="mb-4">
                             <label class="form-label fw-semibold">Tu respuesta</label>
                             <div class="input-group">

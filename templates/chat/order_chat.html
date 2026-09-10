@@ -815,7 +815,7 @@ if (
 
                             headers: {
                                 'Content-Type':
-                                    'application/json',
+                                    'application/json', 'X-CSRFToken': document.querySelector('meta[name=\"csrf-token\"]')?.content || '',
 
                                 'Accept':
                                     'application/json'

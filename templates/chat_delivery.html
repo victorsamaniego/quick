@@ -23,6 +23,7 @@
                 </div>
                 <div class="card-footer">
                     <form method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <div class="input-group">
                             <input type="text" name="message" class="form-control" placeholder="Escribí un mensaje..." required>
                             <button class="btn btn-warning" type="submit">📤 Enviar</button>

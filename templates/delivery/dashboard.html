@@ -198,6 +198,7 @@
                         <!-- Marcar como Entregado -->
                         {% if order.driver_arrived %}
                         <form action="{{ url_for('delivery.mark_delivered', order_id=order.id) }}" method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <button type="submit" class="btn btn-success w-100" 
                                     onclick="return confirm('¿Confirmás que entregaste el pedido?')">
                                 ✅ Marcar como ENTREGADO
@@ -382,7 +383,7 @@ function updateLocation() {
             // Enviar al servidor
             fetch('/delivery/api/location/update', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=\"csrf-token\"]')?.content || ''},
                 body: JSON.stringify({
                     latitude: lat,
                     longitude: lng
@@ -402,7 +403,7 @@ updateLocation();
 function markArrived(orderId) {
     fetch(`/delivery/api/arrived/${orderId}`, {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'}
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=\"csrf-token\"]')?.content || ''}
     })
     .then(response => response.json())
     .then(data => {

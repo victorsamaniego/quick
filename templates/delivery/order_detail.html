@@ -178,6 +178,7 @@
                     </div>
                     {% elif order.status == 'shipped' and order.driver_arrived %}
                     <form action="{{ url_for('delivery.mark_delivered', order_id=order.id) }}" method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn btn-success btn-lg w-100" onclick="return confirm('¿Confirmás que entregaste el pedido?')">
                             ✅ Marcar como ENTREGADO
                         </button>

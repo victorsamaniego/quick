@@ -35,6 +35,8 @@ class Config:
     SESSION_COOKIE_SECURE = (
         os.environ.get("SESSION_COOKIE_SECURE", "False").lower() == "true"
     )
+    REMEMBER_COOKIE_HTTPONLY = True
+    REMEMBER_COOKIE_SAMESITE = "Lax"
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
 
@@ -45,7 +47,6 @@ class Config:
         "png",
         "jpg",
         "jpeg",
-        "gif",
         "webp",
     }
 
