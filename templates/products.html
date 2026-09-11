@@ -146,6 +146,7 @@
                         <i class="bi bi-box"></i> Stock: {{ product.stock }}
                     </p>
                     <form action="{{ url_for('main.add_to_cart', product_id=product.id) }}" method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn btn-outline-warning w-100 btn-sm"
                                 {% if not product.is_available %}disabled{% endif %}>
                             {% if product.is_available %}
@@ -207,7 +208,7 @@ function getUserLocation() {
 function updateLocationInSession(lat, lon) {
     fetch('/api/update-user-location', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=\"csrf-token\"]')?.content || ''},
         body: JSON.stringify({
             latitude: lat,
             longitude: lon

@@ -1,8 +1,10 @@
 """Shared transport and server-side audiences. Importing this never creates an app."""
 import re
+from socket_security import socket_budget
 import time
 from uuid import uuid4
-from flask import current_app, request
+from flask import current_app, request, session
+from auth_identity import matches_identity
 from flask_login import current_user
 from flask_socketio import SocketIO, join_room, leave_room
 from models import db, User, Order
@@ -18,7 +20,7 @@ def can_access_order(user, order):
 
 
 def allowed_room(user, room):
-    if not user or not user.is_authenticated or not user.is_active or not isinstance(room, str):
+    if not user or not user.is_authenticated or not user.is_active or not isinstance(room, str) or len(room) > 96:
         return False
     if room == 'admin':
         return bool(user.is_super_admin)
@@ -55,8 +57,10 @@ def publish(event, payload, rooms):
     identities = current_app.extensions.get('realtime_identities', {})
     for room in rooms:
         for sid, _ in list(socketio.server.manager.get_participants('/', room)):
-            user = db.session.get(User, identities.get(sid)) if sid in identities else None
-            if not allowed_room(user, room):
+            user = db.session.get(User, identities.get(sid), populate_existing=True) if sid in identities else None
+            revoked = current_app.config.get('SECURITY_SESSION_REVOCATION', False) and not matches_identity(
+                user, current_app.extensions.get('realtime_auth_ids', {}).get(sid))
+            if revoked or not allowed_room(user, room):
                 socketio.server.leave_room(sid, room, namespace='/')
     try:
         socketio.emit(event, {**payload, 'emitted_at': time.time()}, to=rooms)
@@ -85,6 +89,7 @@ def publish_status(order, old_status):
 
 def register_realtime(app):
     app.extensions['realtime_identities'] = {}
+    app.extensions['realtime_auth_ids'] = {}
 
     @socketio.on('connect')
     def connect(auth=None):
@@ -92,6 +97,7 @@ def register_realtime(app):
             return False
         socketio.emit('realtime_ready', {'live_since': time.time()}, to=request.sid)
         app.extensions['realtime_identities'][request.sid] = current_user.id
+        app.extensions['realtime_auth_ids'][request.sid] = session.get('_user_id')
         join_room(f'user_{current_user.id}')
         if current_user.is_admin and current_user.business_id:
             join_room(f'business_{current_user.business_id}')
@@ -103,7 +109,9 @@ def register_realtime(app):
     @socketio.on('disconnect')
     def disconnect(reason=None):
         app.extensions['realtime_identities'].pop(request.sid, None)
+        app.extensions['realtime_auth_ids'].pop(request.sid, None)
 
+    @socket_budget('join', 120)
     def join(data=None):
         data = data if isinstance(data, dict) else {}
         room = canonical_room(data.get('room'))
@@ -127,12 +135,14 @@ def register_realtime(app):
     socketio.on_event('join_admin_room', lambda data=None: join({'room': 'admin'}))
 
     @socketio.on('leave')
+    @socket_budget('leave', 120)
     def leave(data=None):
         room = canonical_room(data.get('room')) if isinstance(data, dict) else None
         if allowed_room(current_user, room):
             leave_room(room)
 
     @socketio.on('request_order_update')
+    @socket_budget('snapshot', 120)
     def snapshot(data=None):
         ident = data.get('order_id') if isinstance(data, dict) else None
         if not isinstance(ident, int):
@@ -144,6 +154,7 @@ def register_realtime(app):
                 'status_label': order.status_label, 'status_color': order.status_color}
 
     @socketio.on('user_location_update')
+    @socket_budget('location', 240)
     def user_location(data):
         if current_user.is_authenticated and isinstance(data, dict) and data.get('user_id') == current_user.id:
             try:
@@ -156,6 +167,7 @@ def register_realtime(app):
                     'latitude': lat, 'longitude': lon}, ['admin'])
 
     @socketio.on('delivery_location_update')
+    @socket_budget('location', 240)
     def delivery_location(data):
         if not isinstance(data, dict) or not isinstance(data.get('order_id'), int):
             return

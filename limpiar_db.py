@@ -1,3 +1,6 @@
+from maintenance import require_local_maintenance
+require_local_maintenance(__name__)
+
 from app import app, db
 from models import User, Order, OrderItem, Business, Product, Category, OTPCode, ChatMessage, SupportChat, DeliveryBusinessChat, UserMessage, Notification, NotificationRecipient, DeliveryRequest
 

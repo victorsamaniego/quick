@@ -23,6 +23,7 @@
                     </p>
                     
                     <form method="POST" action="{{ url_for('main.account_settings') }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <div class="mb-3">
                             <label class="form-label fw-semibold">Seleccioná tu color favorito:</label>
                             <select name="theme" class="form-select form-select-lg" id="themeSelect">

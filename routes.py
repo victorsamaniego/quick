@@ -1,3 +1,7 @@
+from uploads import validated_upload
+from security import is_safe_redirect_url, bounded_decimal, rollback_on_error
+from security import lock_user_role_change, validate_role_change, private_credential_response
+from security import validate_product_access
 from uuid import uuid4
 from inventory import inventory_summary, inventory_money
 from realtime import can_access_order, publish, publish_status, order_rooms
@@ -11,17 +15,47 @@ import cloudinary.uploader
 from functools import wraps
 from math import radians, sin, cos, sqrt, atan2, isfinite
 from models import db, User, Product, Category, Order, OrderItem, Business, DeliveryRequest, ChatMessage, SecurityQuestion, SupportChat, DeliveryBusinessChat, UserMessage, Notification, NotificationRecipient
+from auth_tokens import schedule_recovery, consume_reset_token, GENERIC_RECOVERY_MESSAGE
+import delivery_candidates
 from forms import (
     RegistrationForm, LoginForm, PasswordResetForm,
     ProductForm, OrderForm, AdminUserForm, CategoryForm, BusinessCoverageForm, QuickGoldForm
 )
+from flask_wtf.csrf import generate_csrf
 from extensions import limiter
+from flask_limiter.util import get_remote_address
 
 # Blueprints
 main_bp = Blueprint('main', __name__)
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 delivery_bp = Blueprint('delivery', __name__, url_prefix='/delivery')
 super_admin_bp = Blueprint('super_admin', __name__, url_prefix='/super-admin')
+
+
+@main_bp.app_context_processor
+def security_template_context():
+    return {'csrf_token': generate_csrf}
+
+
+@main_bp.before_app_request
+def limit_input_text():
+    limits = {'message': 2000, 'title': 200, 'name': 200, 'description': 10000,
+              'shipping_address': 500, 'shipping_reference': 500, 'search': 200,
+              'identifier': 120, 'username': 80, 'email': 120, 'phone': 20,
+              'password': 1024, 'new_password': 1024, 'confirm_password': 1024,
+              'answer': 500, 'written_answer': 500}
+    payloads = [request.args]
+    if request.method in ('POST', 'PUT', 'PATCH'):
+        payloads.append(request.form)
+        if request.is_json:
+            data = request.get_json(silent=True)
+            if isinstance(data, dict):
+                payloads.append(data)
+    for data in payloads:
+        for key, maximum in limits.items():
+            values = data.getlist(key) if hasattr(data, 'getlist') else [data.get(key)]
+            if any(isinstance(value, str) and len(value) > maximum for value in values):
+                abort(400, description='Texto demasiado largo.')
 
 
 # ============ FUNCIÓN PARA CALCULAR DISTANCIA ============
@@ -95,14 +129,19 @@ def allowed_file(filename):
 def upload_to_cloudinary(file_obj, folder='quickgo'):
     """Sube un archivo a Cloudinary y retorna la URL pública"""
     try:
+        stream, resource_type = validated_upload(file_obj, allow_pdf=folder == 'quickgo/receipts')
+    except ValueError:
+        current_app.logger.warning('Upload rejected')
+        abort(400, description='Archivo inválido. Usá una imagen JPG, PNG o WebP válida, o un PDF para comprobantes.')
+    try:
         result = cloudinary.uploader.upload(
-            file_obj,
+            stream,
             folder=folder,
-            resource_type='auto'
+            resource_type=resource_type
         )
         return result['secure_url']
     except Exception as e:
-        print(f"❌ Error subiendo a Cloudinary: {e}")
+        current_app.logger.warning('Cloudinary upload failed')
         return None
 
 
@@ -213,6 +252,7 @@ def index():
 
 @main_bp.route('/register', methods=['GET', 'POST'])
 @limiter.limit("3 per minute")
+@limiter.limit('20 per minute', methods=['POST'])
 def register():
     if current_user.is_authenticated:
         return redirect(url_for('main.dashboard'))
@@ -293,10 +333,13 @@ def login():
                 flash('️ Tu cuenta no está activada.', 'warning')
                 return redirect(url_for('main.login'))
             
-            login_user(user, remember=form.remember_me.data)
+            privileged = user.is_admin or user.is_delivery or user.is_super_admin
+            login_user(user, remember=form.remember_me.data and not privileged)
             flash(f' 👋 ¡Bienvenido de nuevo, {user.display_name}!', 'success')
             
             next_page = request.args.get('next')
+            if not is_safe_redirect_url(next_page):
+                next_page = None
             
             if user.is_super_admin:
                 return redirect(next_page or url_for('super_admin.dashboard'))
@@ -312,9 +355,11 @@ def login():
     return render_template('login.html', form=form)
 
 
-@main_bp.route('/logout')
+@main_bp.route('/logout', methods=['GET', 'POST'])
 @login_required
 def logout():
+    if request.method == 'GET':
+        return render_template('logout_confirm.html')
     logout_user()
     flash('Sesion cerrada. Hasta pronto en QuickGo!', 'info')
     return redirect(url_for('main.index'))
@@ -408,6 +453,7 @@ def product_detail(product_id):
         return redirect(url_for('delivery.dashboard'))
     
     product = Product.query.get_or_404(product_id)
+    validate_product_access(product)
     if not product.is_available:
         flash('Este producto no esta disponible.', 'warning')
         return redirect(url_for('main.products'))
@@ -426,16 +472,22 @@ def add_to_cart(product_id):
         return redirect(url_for('main.dashboard'))
     
     product = Product.query.get_or_404(product_id)
+    validate_product_access(product)
     if not product.is_available:
         flash('Producto no disponible.', 'danger')
         return redirect(url_for('main.products'))
     
     cart = session.get('cart', {})
+    existing = Product.query.filter(Product.id.in_([int(key) for key in cart])).all()
+    if cart and (len(existing) != len(cart) or any(p.business_id != product.business_id for p in existing)):
+        flash('Tu carrito ya contiene productos de otro negocio. Finalizá o vaciá el carrito antes de comprar en otro comercio.', 'warning')
+        return redirect(url_for('main.cart'))
     cart[str(product_id)] = cart.get(str(product_id), 0) + 1
+    session['cart_business_id'] = product.business_id
     session['cart'] = cart
     
     flash(f'{product.name} agregado al carrito.', 'success')
-    return redirect(request.referrer or url_for('main.products'))
+    return redirect(request.referrer if is_safe_redirect_url(request.referrer) else url_for('main.products'))
 
 
 @main_bp.route('/cart')
@@ -475,8 +527,8 @@ def update_cart(product_id):
     action = request.form.get('action')
     cart = session.get('cart', {})
     
-    if action == 'increase':
-        cart[str(product_id)] = cart.get(str(product_id), 0) + 1
+    if action == 'increase' and str(product_id) in cart:
+        cart[str(product_id)] += 1
     elif action == 'decrease':
         if cart.get(str(product_id), 0) > 1:
             cart[str(product_id)] -= 1
@@ -486,11 +538,14 @@ def update_cart(product_id):
         cart.pop(str(product_id), None)
     
     session['cart'] = cart
+    if not cart:
+        session.pop('cart_business_id', None)
     return redirect(url_for('main.cart'))
 
 
 @main_bp.route('/order/create', methods=['GET', 'POST'])
 @login_required
+@rollback_on_error
 def create_order():
     if current_user.is_admin or current_user.is_delivery:
         flash('No puedes realizar compras.', 'warning')
@@ -506,6 +561,9 @@ def create_order():
             abort(400, description='Campos de pedido no permitidos.')
         if any(len(request.form.getlist(key)) != 1 for key in request.form):
             abort(400, description='Campos duplicados.')
+
+    if request.method == 'POST':
+        User.query.filter_by(id=current_user.id).populate_existing().with_for_update().one()
 
     if current_user.get_pending_order():
         flash('Ya tienes un pedido pendiente.', 'warning')
@@ -524,12 +582,34 @@ def create_order():
             )
         except (TypeError, ValueError):
             abort(400, description='Punto de entrega inválido.')
+        # Lock every product in a stable order; SQLite does not enforce FOR UPDATE.
+        try:
+            quantities = {int(key): value for key, value in cart.items()}
+            if len(quantities) != len(cart) or any(type(q) is not int or q <= 0 for q in quantities.values()):
+                raise ValueError
+        except (TypeError, ValueError):
+            abort(400, description='Carrito inválido.')
+        locked = Product.query.filter(Product.id.in_(quantities)).order_by(Product.id).populate_existing().with_for_update().all()
+        if len(locked) != len(quantities):
+            abort(400, description='Producto no disponible.')
+        business_ids = {p.business_id for p in locked}
+        if len(business_ids) != 1 or None in business_ids:
+            abort(400, description='El carrito debe contener productos de un solo negocio.')
+        cart_business_id = next(iter(business_ids))
+        if session.get('cart_business_id', cart_business_id) != cart_business_id:
+            abort(400, description='Negocio del carrito inválido.')
+        cart_business = db.session.get(Business, cart_business_id)
+        if not cart_business or not cart_business.is_active:
+            abort(400, description='Negocio no disponible.')
+        if any(not p.is_available or p.stock < quantities[p.id] for p in locked):
+            abort(400, description='Producto no disponible o stock insuficiente.')
         total = 0
         order_items_temp = []
         tiene_importacion = False
         
-        for product_id, quantity in cart.items():
-            product = Product.query.get(int(product_id))
+        for product in locked:
+            validate_product_access(product, {'latitude': destination_lat, 'longitude': destination_lon})
+            quantity = quantities[product.id]
             if product and product.is_available and product.stock >= quantity:
                 
                 if product.category and product.category.name.upper() == 'IMPORTACION':
@@ -564,15 +644,15 @@ def create_order():
             return redirect(url_for('main.order_confirm'))
         
         needs_change = request.form.get('needs_change') == 'on'
-        cash_bill_amount = float(request.form.get('cash_bill_amount', 0)) if payment_method == 'cash' else 0.0
+        cash_bill_amount = float(bounded_decimal(request.form.get('cash_bill_amount', 0))) if payment_method == 'cash' else 0.0
         receipt_path = None
         
         # 🔥 CLOUDINARY: Subir comprobante de pago a la nube
         if payment_method == 'transfer' and 'payment_receipt' in request.files:
             file = request.files['payment_receipt']
             if file and file.filename != '':
-                ext = file.filename.rsplit('.', 1)[1].lower()
-                if ext in {'png', 'jpg', 'jpeg', 'pdf'}:
+                ext = file.filename.rsplit('.', 1)[-1].lower()
+                if ext in {'png', 'jpg', 'jpeg', 'webp', 'pdf'}:
                     receipt_url = upload_to_cloudinary(file, folder='quickgo/receipts')
                     if receipt_url:
                         receipt_path = receipt_url
@@ -633,6 +713,7 @@ def create_order():
                 'total': order.total_amount}, [f'business_{order.business_id}'])
         
         session.pop('cart', None)
+        session.pop('cart_business_id', None)
         session.pop('user_location', None)
         
         if tiene_importacion:
@@ -700,12 +781,20 @@ def account_settings():
 # ============ RECUPERACIÓN DE CONTRASEÑA (SOLO PREGUNTAS DE SEGURIDAD) ============
 
 @main_bp.route('/recover', methods=['GET', 'POST'])
+@limiter.limit('5 per minute; 20 per hour', methods=['POST'])
 def recover_account():
     if current_user.is_authenticated:
         return redirect(url_for('main.dashboard'))
     
     if request.method == 'POST':
+        # A new identity must never inherit verification of a previous identity.
+        for key in ('recover_user_id', 'security_verified', 'final_verified'):
+            session.pop(key, None)
         identifier = request.form.get('identifier', '').strip()
+        if current_app.config.get('SECURITY_TOKEN_RECOVERY', False):
+            schedule_recovery(identifier)
+            flash(GENERIC_RECOVERY_MESSAGE, 'info')
+            return render_template('recover_account.html')
         
         user = User.query.filter(
             (User.username == identifier) | (User.email == identifier)
@@ -726,7 +815,10 @@ def recover_account():
 
 
 @main_bp.route('/recover/answer', methods=['GET', 'POST'])
+@limiter.limit('5 per minute; 20 per hour', methods=['POST'])
 def answer_security_question():
+    if current_app.config.get('SECURITY_TOKEN_RECOVERY', False):
+        return redirect(url_for('main.recover_account'))
     user_id = session.get('recover_user_id')
     if not user_id:
         flash('️ Sesión expirada. Iniciá de nuevo.', 'warning')
@@ -753,7 +845,10 @@ def answer_security_question():
 
 
 @main_bp.route('/recover/select-answer', methods=['GET', 'POST'])
+@limiter.limit('5 per minute; 20 per hour', methods=['POST'])
 def select_correct_answer():
+    if current_app.config.get('SECURITY_TOKEN_RECOVERY', False):
+        return redirect(url_for('main.recover_account'))
     user_id = session.get('recover_user_id')
     security_verified = session.get('security_verified')
     
@@ -784,7 +879,10 @@ def select_correct_answer():
 
 
 @main_bp.route('/recover/reset-password', methods=['GET', 'POST'])
+@limiter.limit('5 per minute; 20 per hour', methods=['POST'])
 def reset_password_final():
+    if current_app.config.get('SECURITY_TOKEN_RECOVERY', False):
+        return redirect(url_for('main.recover_account'))
     user_id = session.get('recover_user_id')
     final_verified = session.get('final_verified')
     
@@ -824,6 +922,36 @@ def reset_password_final():
         return redirect(url_for('main.login'))
     
     return render_template('reset_password_final.html', username=user.display_name)
+
+
+@main_bp.route('/recover/token', methods=['GET', 'POST'])
+@limiter.limit('5 per minute; 20 per hour', methods=['POST'])
+@rollback_on_error
+def reset_with_token():
+    if not current_app.config.get('SECURITY_TOKEN_RECOVERY', False):
+        abort(404)
+    error, raw = None, ''
+    if request.method == 'POST':
+        raw = request.form.get('reset_token', '')
+        password = request.form.get('new_password', '')
+        if password != request.form.get('confirm_password', '') or User.validate_strong_password(password):
+            error = 'Revisá que las contraseñas coincidan y cumplan los requisitos de seguridad.'
+        elif consume_reset_token(raw, password):
+            logout_user()
+            for key in ('recover_user_id', 'security_verified', 'final_verified'):
+                session.pop(key, None)
+            flash('Contraseña actualizada. Iniciá sesión nuevamente.', 'success')
+            return redirect(url_for('main.login'))
+        else:
+            error = 'El enlace no es válido o ha expirado. Solicitá otro.'
+            raw = ''
+    from flask import make_response
+    response = make_response(render_template('reset_token.html', error=error, reset_token=raw),
+                             400 if error else 200)
+    response.headers['Cache-Control'] = 'no-store'
+    response.headers['Referrer-Policy'] = 'no-referrer'
+    response.headers['Content-Security-Policy'] = "default-src 'none'; script-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+    return response
 
 
 # ============ API ENDPOINTS ============
@@ -901,6 +1029,9 @@ def update_user_location():
 
 @main_bp.route('/activate', methods=['GET', 'POST'])
 @login_required
+@limiter.limit('5 per minute; 20 per hour', methods=['POST'], key_func=get_remote_address)
+@limiter.limit('10 per hour', methods=['POST'], key_func=lambda: str(current_user.id))
+@rollback_on_error
 def activate_subscription():
     if not current_user.is_admin or not current_user.business:
         return redirect(url_for('main.dashboard'))
@@ -925,7 +1056,9 @@ def activate_subscription():
     if request.method == 'POST':
         code_input = request.form.get('activation_code', '').strip().upper()
         
-        if business.activation_code and business.activation_code == code_input:
+        if len(code_input) > 64:
+            abort(400, description='Código inválido.')
+        if business.activation_code and secrets.compare_digest(business.activation_code.encode(), code_input.encode()):
             code_expires = business.code_expires_at
             if code_expires:
                 if code_expires.tzinfo is None:
@@ -1123,6 +1256,7 @@ def manage_users():
 @login_required
 @business_admin_required
 @subscription_required
+@rollback_on_error
 def edit_user(user_id):
     user = User.query.get_or_404(user_id)
     
@@ -1137,6 +1271,12 @@ def edit_user(user_id):
     form = AdminUserForm(obj=user)
     
     if form.validate_on_submit():
+        user, locked_users = lock_user_role_change(user_id)
+        if user.business_id != current_user.business_id or user.is_super_admin:
+            abort(403)
+        validate_role_change(user, locked_users, active=form.is_active.data,
+                             admin=form.is_admin.data, delivery=request.form.get('is_delivery') == 'true',
+                             super_admin=user.is_super_admin, business_id=user.business_id)
         user.email = form.email.data
         user.phone = form.phone.data
         user.is_active = form.is_active.data
@@ -1154,6 +1294,8 @@ def edit_user(user_id):
 @login_required
 @business_admin_required
 @subscription_required
+@limiter.limit('5 per minute', methods=['POST'])
+@rollback_on_error
 def reset_user_password(user_id):
     user = User.query.get_or_404(user_id)
     
@@ -1164,13 +1306,16 @@ def reset_user_password(user_id):
     if user.is_super_admin:
         flash('❌ No podés resetear la contraseña de un Super Admin.', 'danger')
         return redirect(url_for('admin.manage_users'))
+    if current_app.config.get('SECURITY_TOKEN_RECOVERY', False):
+        schedule_recovery(user.email)
+        flash(GENERIC_RECOVERY_MESSAGE, 'info')
+        return redirect(url_for('admin.manage_users'))
     
-    new_password = secrets.token_urlsafe(8)
+    new_password = secrets.token_urlsafe(32)
     user.set_password(new_password)
     db.session.commit()
     
-    flash(f'🔑 Contraseña reseteada. Nueva contraseña temporal: {new_password}', 'success')
-    return redirect(url_for('admin.manage_users'))
+    return private_credential_response(new_password, 'Contraseña restablecida', url_for('admin.manage_users'))
 
 
 @admin_bp.route('/inventory')
@@ -1198,6 +1343,7 @@ def manage_products():
 @login_required
 @business_admin_required
 @subscription_required
+@limiter.limit('30 per minute', methods=['POST'])
 def create_product():
     if not current_user.business_id:
         flash('Tu cuenta de administrador no tiene un negocio asignado. Contacta al Super Admin.', 'danger')
@@ -1239,6 +1385,7 @@ def create_product():
 @login_required
 @business_admin_required
 @subscription_required
+@limiter.limit('30 per minute', methods=['POST'])
 def edit_product(product_id):
     product = Product.query.get_or_404(product_id)
     if product.business_id != current_user.business_id:
@@ -1431,16 +1578,19 @@ def ver_ubicacion_pedido(order_id):
 @admin_bp.route('/pedido/<int:order_id>/actualizar-delivery', methods=['POST'])
 @login_required
 @business_admin_required
+@rollback_on_error
 def actualizar_costo_delivery(order_id):
-    order = Order.query.get_or_404(order_id)
+    order = Order.query.filter_by(id=order_id).populate_existing().with_for_update().first_or_404()
     
     if order.business_id != current_user.business_id:
         return jsonify({'error': 'No autorizado'}), 403
     
-    data = request.get_json()
-    nuevo_costo = float(data.get('delivery_fee', 10000))
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        abort(400)
+    nuevo_costo = float(bounded_decimal(data.get('delivery_fee', 10000)))
     
-    subtotal = order.total_amount - order.delivery_fee
+    subtotal = float(bounded_decimal(str(bounded_decimal(order.total_amount) - bounded_decimal(order.delivery_fee))))
     order.delivery_fee = nuevo_costo
     order.total_amount = subtotal + nuevo_costo
     
@@ -1480,6 +1630,7 @@ def api_pedido_datos(order_id):
 @admin_bp.route('/orders/<int:order_id>/request-delivery', methods=['GET', 'POST'])
 @login_required
 @business_admin_required
+@rollback_on_error
 def request_delivery(order_id):
     order = Order.query.get_or_404(order_id)
     
@@ -1491,12 +1642,32 @@ def request_delivery(order_id):
         flash('El pedido ya fue procesado.', 'warning')
         return redirect(url_for('admin.manage_orders'))
     
-    if not order.client_latitude or not order.client_longitude:
+    if request.method == 'POST' and current_app.config.get('SECURITY_DELIVERY_CANDIDATES', False):
+        radius = float(bounded_decimal(request.form.get('radius', 5), maximum='500'))
+        dispatched, recipients, changed = delivery_candidates.create_dispatch(order.id, current_user.business_id, radius)
+        if dispatched is None:
+            flash('No hay deliverys disponibles en ese radio.', 'warning')
+            return redirect(url_for('admin.manage_orders'))
+        if changed:
+            for candidate in recipients:
+                publish('new_delivery_request', {
+                    'request_id': dispatched.id, 'delivery_driver_id': candidate.driver_id,
+                    'order_id': order.id, 'business_name': current_user.business.name,
+                    'distance_km': candidate.approximate_distance_km,
+                    'pickup_address': current_user.business.address, 'total_amount': order.total_amount,
+                }, rooms=[f'delivery_{candidate.driver_id}'])
+        flash('Solicitud disponible para los deliverys seleccionados.', 'success')
+        return redirect(url_for('admin.delivery_request_status', request_id=dispatched.id))
+
+    missing_location = order.client_latitude is None or order.client_longitude is None
+    if not current_app.config.get('SECURITY_DELIVERY_CANDIDATES', False):
+        missing_location = not order.client_latitude or not order.client_longitude
+    if missing_location:
         flash('No hay ubicación del cliente disponible.', 'danger')
         return redirect(url_for('admin.manage_orders'))
     
     if request.method == 'POST':
-        radius = float(request.form.get('radius', 5))
+        radius = float(bounded_decimal(request.form.get('radius', 5), maximum='500'))
         
         nearby_deliveries = User.find_nearby_deliveries(
             order.client_latitude,
@@ -1527,9 +1698,8 @@ def request_delivery(order_id):
                 'delivery_driver_id': delivery.id,
                 'order_id': order.id,
                 'business_name': current_user.business.name,
-                'distance_km': distance,
+                'distance_km': round(distance),
                 'pickup_address': current_user.business.address,
-                'delivery_address': order.shipping_address,
                 'total_amount': order.total_amount
             }, rooms=[f'delivery_{delivery.id}'])
         
@@ -1549,6 +1719,10 @@ def delivery_request_status(request_id):
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('admin.manage_orders'))
     
+    if current_app.config.get('SECURITY_DELIVERY_CANDIDATES', False):
+        delivery_request = delivery_candidates.refresh_expiry(delivery_request.id)
+        return render_template('admin/delivery_request_status.html', request=delivery_request)
+
     if delivery_request.status == 'pending' and delivery_request.is_expired():
         delivery_request.status = 'expired'
         db.session.commit()
@@ -1578,6 +1752,9 @@ def delivery_requests_list():
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('main.index'))
     
+    if current_app.config.get('SECURITY_DELIVERY_CANDIDATES', False):
+        return render_template('delivery/requests.html', requests=delivery_candidates.pending_for(current_user))
+
     requests = []
     for req in DeliveryRequest.query.filter_by(status='pending').all():
         if req.is_expired() or req.order.status != 'pending' or req.order.delivery_driver_id:
@@ -1591,7 +1768,7 @@ def delivery_requests_list():
                 if expires and expires.tzinfo is None:
                     expires = expires.replace(tzinfo=timezone.utc)
                 remaining = max(0, int((expires - datetime.now(timezone.utc)).total_seconds())) if expires else 0
-                requests.append({'request': req, 'distance': item['distance'], 'remaining': remaining})
+                requests.append({'request': req, 'distance': round(item['distance']), 'remaining': remaining})
                 break
 
     return render_template('delivery/requests.html', requests=requests)
@@ -1599,29 +1776,29 @@ def delivery_requests_list():
 
 @main_bp.route('/delivery-request/<int:request_id>/accept', methods=['POST'])
 @login_required
+@rollback_on_error
 def accept_delivery_request(request_id):
     if not current_user.is_delivery:
         return jsonify({'error': 'Unauthorized'}), 403
     
-    delivery_request = DeliveryRequest.query.filter_by(id=request_id).with_for_update().first_or_404()
-    Order.query.filter_by(id=delivery_request.order_id).with_for_update().first_or_404()
-    if not eligible_delivery(current_user, delivery_request):
-        return jsonify({'error': 'No autorizado o solicitud expirada'}), 403
-    
-    if delivery_request.status != 'pending':
-        flash('Esta solicitud ya no está disponible.', 'warning')
-        return redirect(url_for('delivery.dashboard'))
-    
-    delivery_request.driver_id = current_user.id
-    delivery_request.status = 'accepted'
-    delivery_request.accepted_at = datetime.now(timezone.utc)
-    
-    order = delivery_request.order
-    old_status = order.status
-    order.delivery_driver_id = current_user.id
-    order.status = 'shipped'
-    
-    db.session.commit()
+    if current_app.config.get('SECURITY_DELIVERY_CANDIDATES', False):
+        delivery_request, order, changed = delivery_candidates.respond(request_id, current_user, True)
+        if not changed:
+            return redirect(url_for('delivery.dashboard'))
+        old_status = 'pending'
+    else:
+        delivery_request = DeliveryRequest.query.filter_by(id=request_id).with_for_update().first_or_404()
+        Order.query.filter_by(id=delivery_request.order_id).with_for_update().first_or_404()
+        if not eligible_delivery(current_user, delivery_request):
+            return jsonify({'error': 'No autorizado o solicitud expirada'}), 403
+        delivery_request.driver_id = current_user.id
+        delivery_request.status = 'accepted'
+        delivery_request.accepted_at = datetime.now(timezone.utc)
+        order = delivery_request.order
+        old_status = order.status
+        order.delivery_driver_id = current_user.id
+        order.status = 'shipped'
+        db.session.commit()
     publish_status(order, old_status)
     
     
@@ -1644,20 +1821,21 @@ def accept_delivery_request(request_id):
 
 @main_bp.route('/delivery-request/<int:request_id>/reject', methods=['POST'])
 @login_required
+@rollback_on_error
 def reject_delivery_request(request_id):
     if not current_user.is_delivery:
         return jsonify({'error': 'Unauthorized'}), 403
     
-    delivery_request = DeliveryRequest.query.filter_by(id=request_id).with_for_update().first_or_404()
-    if not eligible_delivery(current_user, delivery_request):
-        return jsonify({'error': 'No autorizado o solicitud expirada'}), 403
-    
-    if delivery_request.status != 'pending':
-        flash('Esta solicitud ya no está disponible.', 'warning')
-        return redirect(url_for('delivery.dashboard'))
-    
-    delivery_request.status = 'rejected'
-    db.session.commit()
+    if current_app.config.get('SECURITY_DELIVERY_CANDIDATES', False):
+        delivery_request, order, changed = delivery_candidates.respond(request_id, current_user, False)
+        if not changed:
+            return redirect(url_for('delivery.dashboard'))
+    else:
+        delivery_request = DeliveryRequest.query.filter_by(id=request_id).with_for_update().first_or_404()
+        if not eligible_delivery(current_user, delivery_request):
+            return jsonify({'error': 'No autorizado o solicitud expirada'}), 403
+        delivery_request.status = 'rejected'
+        db.session.commit()
     
     publish('delivery_request_rejected', {
         'request_id': delivery_request.id,
@@ -1702,6 +1880,7 @@ def chat_history(order_id):
 
 @main_bp.route('/api/chat/order/<int:order_id>/send', methods=['POST'])
 @login_required
+@limiter.limit('60 per minute', methods=['POST'])
 def send_chat_message(order_id):
     order = Order.query.get_or_404(order_id)
     
@@ -1716,8 +1895,8 @@ def send_chat_message(order_id):
         return jsonify({'error': 'Mensaje inválido'}), 400
     message_text = data['message'].strip()
     
-    if not message_text:
-        return jsonify({'error': 'Mensaje vacío'}), 400
+    if not message_text or len(message_text) > 2000:
+        return jsonify({'error': 'El mensaje debe tener entre 1 y 2000 caracteres.'}), 400
     
     message = ChatMessage(
         order_id=order_id,
@@ -1841,18 +2020,20 @@ def order_detail(order_id):
 
 @delivery_bp.route('/api/location/update', methods=['POST'])
 @login_required
-@limiter.exempt
+@limiter.limit('120 per minute', override_defaults=True)
+@rollback_on_error
 def update_location():
     if not current_user.is_delivery:
         return jsonify({'error': 'Unauthorized'}), 403
     
-    data = request.get_json()
-    
-    if not data.get('latitude') or not data.get('longitude'):
-        return jsonify({'error': 'Coordenadas requeridas'}), 400
-    
-    current_user.latitude = data['latitude']
-    current_user.longitude = data['longitude']
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or set(data) != {'latitude', 'longitude'}:
+        return jsonify({'error': 'Coordenadas inválidas'}), 400
+    try:
+        lat, lon = validar_coordenadas(data['latitude'], data['longitude'])
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Coordenadas inválidas'}), 400
+    current_user.latitude, current_user.longitude = lat, lon
     db.session.commit()
     
     return jsonify({'status': 'ok'})
@@ -2090,6 +2271,7 @@ def update_quickgold(business_id):
 @super_admin_bp.route('/businesses/new', methods=['GET', 'POST'])
 @login_required
 @super_admin_required
+@rollback_on_error
 def create_business():
     if request.method == 'POST':
         try:
@@ -2112,9 +2294,9 @@ def create_business():
             latitude=latitude,
             longitude=longitude,
             delivery_radius_km=radius,
-            commission_rate=float(request.form.get('commission_rate', 0.10)),
-            delivery_fee_base=float(request.form.get('delivery_fee_base', 5000)),
-            delivery_fee_per_km=float(request.form.get('delivery_fee_per_km', 1000))
+            commission_rate=float(bounded_decimal(request.form.get('commission_rate', 0.10), maximum='1')),
+            delivery_fee_base=float(bounded_decimal(request.form.get('delivery_fee_base', 5000), maximum='1000000000')),
+            delivery_fee_per_km=float(bounded_decimal(request.form.get('delivery_fee_per_km', 1000), maximum='1000000000'))
         )
         
         # 🔥 CLOUDINARY: Subir logo del negocio a la nube
@@ -2136,6 +2318,7 @@ def create_business():
 @super_admin_bp.route('/businesses/<int:business_id>/edit', methods=['GET', 'POST'])
 @login_required
 @super_admin_required
+@rollback_on_error
 def edit_business(business_id):
     business = Business.query.get_or_404(business_id)
     
@@ -2153,13 +2336,13 @@ def edit_business(business_id):
         business.description = request.form.get('description')
         business.phone = request.form.get('phone')
         business.address = request.form.get('address')
-        business.commission_rate = float(request.form.get('commission_rate', 0.10))
-        business.delivery_fee_base = float(request.form.get('delivery_fee_base', 5000))
-        business.delivery_fee_per_km = float(request.form.get('delivery_fee_per_km', 1000))
+        business.commission_rate = float(bounded_decimal(request.form.get('commission_rate', 0.10), maximum='1'))
+        business.delivery_fee_base = float(bounded_decimal(request.form.get('delivery_fee_base', 5000), maximum='1000000000'))
+        business.delivery_fee_per_km = float(bounded_decimal(request.form.get('delivery_fee_per_km', 1000), maximum='1000000000'))
         business.is_active = 'is_active' in request.form
         
         if 'monthly_fee' in request.form:
-            business.monthly_fee = float(request.form.get('monthly_fee', 0))
+            business.monthly_fee = float(bounded_decimal(request.form.get('monthly_fee', 0), maximum='1000000000'))
         if 'billing_start' in request.form and request.form.get('billing_start'):
             business.billing_start = datetime.strptime(request.form.get('billing_start'), '%Y-%m-%d').date()
         if 'billing_end' in request.form and request.form.get('billing_end'):
@@ -2203,11 +2386,8 @@ def generate_activation_code(business_id):
     
     db.session.commit()
     
-    flash(f'🔑 CÓDIGO GENERADO: {new_code}', 'warning')
-    flash(f' Válido por 5 horas (hasta {business.code_expires_at.strftime("%H:%M %d/%m/%Y")})', 'info')
-    flash(f' Copiá este código y envíaselo al negocio para que active su suscripción', 'info')
-    
-    return redirect(url_for('super_admin.edit_business', business_id=business_id))
+    return private_credential_response(new_code, 'Código de activación: válido por 5 horas',
+                                       url_for('super_admin.edit_business', business_id=business_id))
 
 
 @super_admin_bp.route('/businesses/<int:business_id>/view')
@@ -2249,26 +2429,44 @@ def manage_users():
 @super_admin_bp.route('/users/<int:user_id>/reset-password', methods=['POST'])
 @login_required
 @super_admin_required
+@limiter.limit('5 per minute', methods=['POST'])
+@rollback_on_error
 def reset_user_password(user_id):
     user = User.query.get_or_404(user_id)
+    if current_app.config.get('SECURITY_TOKEN_RECOVERY', False):
+        schedule_recovery(user.email)
+        flash(GENERIC_RECOVERY_MESSAGE, 'info')
+        return redirect(url_for('super_admin.manage_users'))
     
-    new_password = secrets.token_urlsafe(8)
+    new_password = secrets.token_urlsafe(32)
     
     user.set_password(new_password)
     db.session.commit()
     
-    flash(f'Contrasena reseteada para {user.email}. Nueva contrasena: {new_password}', 'warning')
-    return redirect(url_for('super_admin.manage_users'))
+    return private_credential_response(new_password, 'Contraseña restablecida', url_for('super_admin.manage_users'))
 
 
 @super_admin_bp.route('/users/<int:user_id>/edit', methods=['GET', 'POST'])
 @login_required
 @super_admin_required
+@limiter.limit('20 per minute', methods=['POST'])
+@rollback_on_error
 def edit_user(user_id):
     user = User.query.get_or_404(user_id)
     businesses = Business.query.all()
     
     if request.method == 'POST':
+        user, locked_users = lock_user_role_change(user_id)
+        business_value = request.form.get('business_id')
+        try:
+            business_id = int(business_value) if business_value else None
+        except (TypeError, ValueError):
+            abort(400)
+        if business_id is not None and db.session.get(Business, business_id) is None:
+            abort(400)
+        validate_role_change(user, locked_users, active='is_active' in request.form,
+                             admin='is_admin' in request.form, delivery='is_delivery' in request.form,
+                             super_admin='is_super_admin' in request.form, business_id=business_id)
         user.email = request.form.get('email')
         user.phone = request.form.get('phone')
         
@@ -2290,13 +2488,17 @@ def edit_user(user_id):
 @super_admin_bp.route('/users/<int:user_id>/delete', methods=['POST'])
 @login_required
 @super_admin_required
+@limiter.limit('5 per minute', methods=['POST'])
+@rollback_on_error
 def delete_user(user_id):
-    user = User.query.get_or_404(user_id)
+    user, locked_users = lock_user_role_change(user_id)
     
     if user.id == current_user.id:
         flash('No puedes eliminar tu propia cuenta de Super Admin.', 'danger')
         return redirect(url_for('super_admin.manage_users'))
         
+    validate_role_change(user, locked_users, active=False, admin=False, delivery=False,
+                         super_admin=False, business_id=None)
     db.session.delete(user)
     db.session.commit()
     flash('Usuario eliminado permanentemente.', 'warning')
@@ -2352,6 +2554,7 @@ def analytics():
 
 @main_bp.route('/soporte', methods=['GET', 'POST'])
 @login_required
+@limiter.limit('20 per minute', methods=['POST'])
 def soporte():
     """Chat de soporte para comerciantes con Super Admin"""
     if not current_user.is_admin or not current_user.business:
@@ -2362,6 +2565,8 @@ def soporte():
     
     if request.method == 'POST':
         message = request.form.get('message', '').strip()
+        if len(message) > 2000:
+            abort(400, description='Mensaje demasiado largo.')
         if message:
             chat = SupportChat(
                 business_id=business.id,
@@ -2409,12 +2614,15 @@ def soporte_lista():
 @super_admin_bp.route('/soporte/<int:business_id>', methods=['GET', 'POST'])
 @login_required
 @super_admin_required
+@limiter.limit('20 per minute', methods=['POST'])
 def soporte_admin(business_id):
     """Chat de soporte desde Super Admin hacia comerciante"""
     business = Business.query.get_or_404(business_id)
     
     if request.method == 'POST':
         message = request.form.get('message', '').strip()
+        if len(message) > 2000:
+            abort(400, description='Mensaje demasiado largo.')
         if message:
             chat = SupportChat(
                 business_id=business.id,
@@ -2440,6 +2648,7 @@ def soporte_admin(business_id):
 
 @main_bp.route('/chat-delivery/<int:order_id>', methods=['GET', 'POST'])
 @login_required
+@limiter.limit('20 per minute', methods=['POST'])
 def chat_delivery_negocio(order_id):
     """Chat entre delivery y negocio para un pedido específico"""
     order = Order.query.get_or_404(order_id)
@@ -2453,6 +2662,8 @@ def chat_delivery_negocio(order_id):
     
     if request.method == 'POST':
         message = request.form.get('message', '').strip()
+        if len(message) > 2000:
+            abort(400, description='Mensaje demasiado largo.')
         if message:
             chat = DeliveryBusinessChat(
                 order_id=order.id,
@@ -2565,11 +2776,14 @@ def notifications_list():
 @super_admin_bp.route('/notifications/new', methods=['GET', 'POST'])
 @login_required
 @super_admin_required
+@limiter.limit('20 per minute', methods=['POST'])
 def create_notification():
     """Crear nueva notificación masiva"""
     if request.method == 'POST':
         title = request.form.get('title', '').strip()
         message = request.form.get('message', '').strip()
+        if len(message) > 2000:
+            abort(400, description='Mensaje demasiado largo.')
         notification_type = request.form.get('notification_type', 'all')
         
         if not title or not message:

@@ -119,7 +119,7 @@ class ProductForm(FlaskForm):
     stock = IntegerField('Stock', validators=[DataRequired(), NumberRange(min=0)])
     category_id = SelectField('Categoría', coerce=int, validators=[DataRequired()])
     image = FileField('Imagen del Producto', validators=[
-        FileAllowed(['jpg', 'png', 'jpeg'], 'Solo imágenes!')
+        FileAllowed(['jpg', 'png', 'jpeg', 'webp'], 'Solo imágenes!')
     ])
     submit = SubmitField('Guardar Producto')
 

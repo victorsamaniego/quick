@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recuperar acceso</title><script defer src="{{ url_for('static', filename='js/reset_token.js') }}"></script>
+</head><body><main>
+<h1>Elegí una nueva contraseña</h1>
+{% if error %}<p role="alert">{{ error }}</p>{% endif %}
+<form method="POST" action="{{ url_for('main.reset_with_token') }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<input type="hidden" name="reset_token" id="reset-token" value="{{ reset_token|default('') }}">
+<p><label>Nueva contraseña <input type="password" name="new_password" required maxlength="1024" autocomplete="new-password"></label></p>
+<p><label>Confirmar contraseña <input type="password" name="confirm_password" required maxlength="1024" autocomplete="new-password"></label></p>
+<button type="submit">Cambiar contraseña</button>
+</form><p><a href="{{ url_for('main.recover_account') }}">Solicitar otro enlace</a></p>
+</main></body></html>

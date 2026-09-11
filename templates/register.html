@@ -230,7 +230,7 @@ document.getElementById('usernameInput').addEventListener('input', function(e) {
     usernameTimeout = setTimeout(() => {
         fetch('/api/check-username', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=\"csrf-token\"]')?.content || ''},
             body: JSON.stringify({username: username})
         })
         .then(response => response.json())
@@ -274,7 +274,7 @@ const validatePassword = debounce(function(e) {
 
     fetch('/api/validate-password', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=\"csrf-token\"]')?.content || ''},
         body: JSON.stringify({password: password})
     })
     .then(response => {

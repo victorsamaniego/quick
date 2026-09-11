@@ -1,3 +1,6 @@
+from maintenance import require_local_maintenance
+require_local_maintenance(__name__)
+
 from app import app, db
 
 with app.app_context():

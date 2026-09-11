@@ -1,48 +1,30 @@
-const CACHE_NAME = 'quickgo-v1';
-const urlsToCache = [
-    '/',
-    '/static/css/style.css',
-    '/static/js/main.js',
-    'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css',
-    'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js',
-    'https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css'
-];
-
-// Instalar Service Worker
+const CACHE_NAME = 'quickgo-public-v2';
+// Explicit public assets only. Navigations and all private responses use the network.
+const urlsToCache = ['/static/css/style.css', '/static/js/main.js'];
+const publicURLs = new Set(urlsToCache.map(path => new URL(path, self.location.origin).href));
+const cacheable = response => response.ok && !response.redirected &&
+    !/no-store|private/i.test(response.headers.get('Cache-Control') || '');
 self.addEventListener('install', event => {
-    event.waitUntil(
-        caches.open(CACHE_NAME)
-            .then(cache => {
-                console.log('Cache opened');
-                return cache.addAll(urlsToCache);
-            })
-    );
+    event.waitUntil(caches.open(CACHE_NAME).then(async cache => {
+        await Promise.all(urlsToCache.map(async path => {
+            const response = await fetch(path, {credentials: 'omit', cache: 'reload'});
+            if (cacheable(response)) await cache.put(path, response);
+        }));
+    }));
 });
-
-// Activar Service Worker
 self.addEventListener('activate', event => {
-    event.waitUntil(
-        caches.keys().then(cacheNames => {
-            return Promise.all(
-                cacheNames.map(cacheName => {
-                    if (cacheName !== CACHE_NAME) {
-                        return caches.delete(cacheName);
-                    }
-                })
-            );
-        })
-    );
+    event.waitUntil(caches.keys().then(names => Promise.all(names
+        .filter(name => name.startsWith('quickgo-') && name !== CACHE_NAME)
+        .map(name => caches.delete(name)))));
 });
-
-// Interceptar peticiones
 self.addEventListener('fetch', event => {
-    event.respondWith(
-        caches.match(event.request)
-            .then(response => {
-                if (response) {
-                    return response;
-                }
-                return fetch(event.request);
-            })
-    );
+    const request = event.request;
+    if (request.method !== 'GET' || request.mode === 'navigate' || !publicURLs.has(request.url)) return;
+    event.respondWith(caches.open(CACHE_NAME).then(async cache => {
+        const cached = await cache.match(request);
+        if (cached) return cached;
+        const response = await fetch(request);
+        if (cacheable(response)) await cache.put(request, response.clone());
+        return response;
+    }));
 });

@@ -1,3 +1,6 @@
+from maintenance import require_local_maintenance
+require_local_maintenance(__name__)
+
 #!/usr/bin/env python3
 from app import app, db
 from models import Order

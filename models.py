@@ -3,6 +3,7 @@ from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timezone, timedelta
 import random
+import secrets
 import string
 
 db = SQLAlchemy()
@@ -33,6 +34,10 @@ class User(UserMixin, db.Model):
     business = db.relationship('Business', back_populates='admin_user', lazy=True)
     received_notifications = db.relationship('NotificationRecipient', foreign_keys='NotificationRecipient.user_id', lazy=True)
     
+    def get_id(self):
+        from auth_identity import authentication_id
+        return authentication_id(self)
+
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
     
@@ -244,13 +249,18 @@ class OTPCode(db.Model):
     
     @staticmethod
     def generate_code():
-        return ''.join(random.choices(string.digits, k=6))
+        return ''.join(secrets.choice(string.digits) for _ in range(6))
     
     def is_expired(self, expiry_minutes=10):
-        return datetime.now(timezone.utc) > self.created_at + timedelta(minutes=expiry_minutes)
+        created = self.created_at
+        if created is None:
+            return True
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        return self.used or datetime.now(timezone.utc) >= created + timedelta(minutes=expiry_minutes)
     
     def __repr__(self):
-        return f'<OTPCode {self.code} for user {self.user_id}>'
+        return f'<OTPCode for user {self.user_id}>'
 
 class Category(db.Model):
     __tablename__ = 'categories'

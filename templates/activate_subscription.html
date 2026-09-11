@@ -17,6 +17,7 @@
                     </p>
                     
                     <form method="POST" class="text-start">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <div class="mb-3">
                             <label class="form-label fw-semibold">Código de Activación</label>
                             <input type="text" name="activation_code" class="form-control form-control-lg text-center fw-bold" 

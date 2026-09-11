@@ -95,7 +95,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function calculateDeliveryFee(lat, lon) {
         fetch('/api/location/calculate-delivery', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.getElementById('csrf-token')?.content || '' },
             body: JSON.stringify({ latitude: lat, longitude: lon })
         })
         .then(res => res.json())
