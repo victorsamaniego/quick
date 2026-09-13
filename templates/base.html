@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<html lang="es" data-theme="{{ current_theme | default('gold') }}">
+{% set internal_theme = current_user.is_authenticated and request.endpoint not in ['main.index', 'main.products', 'main.product_detail', 'main.login', 'main.register'] %}
+<html lang="es" data-theme="{{ current_theme | default('gold-classic') if internal_theme else 'gold' }}">
 <head>
     <meta id="csrf-token" name="csrf-token" content="{{ csrf_token() }}">
     <meta charset="UTF-8">
@@ -33,8 +34,9 @@
     <link href="{{ url_for('static', filename='vendor/bootstrap-icons/bootstrap-icons.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/storefront.css') }}" rel="stylesheet">
     {% block extra_css %}{% endblock %}
+    <link href="{{ url_for('static', filename='css/themes.css') }}" rel="stylesheet">
 </head>
-<body class="quickgo-shell {{ 'storefront-modern' if request.blueprint == 'super_admin' or request.endpoint in ['main.my_notifications', 'main.view_user_notification'] else '' }} theme-{{ current_theme | default('gold') }} {% block body_class %}{% endblock %}">
+<body class="quickgo-shell {{ 'qg-internal theme-' ~ (current_theme | default('gold-classic')) if internal_theme else 'theme-gold' }} {{ 'storefront-modern' if request.blueprint == 'super_admin' or request.endpoint in ['main.my_notifications', 'main.view_user_notification'] else '' }} {% block body_class %}{% endblock %}">
     <!-- Navbar -->
     <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm sticky-top">
         <div class="container">

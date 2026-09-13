@@ -3,6 +3,7 @@ from security import is_safe_redirect_url, bounded_decimal, rollback_on_error
 from security import lock_user_role_change, validate_role_change, private_credential_response
 from security import validate_product_access
 from uuid import uuid4
+from themes import THEMES, normalize_theme
 from inventory import inventory_summary, inventory_money
 from notifications_service import create_broadcast, recipient_query, audience_label, payload as notification_payload, user_audience
 from realtime import can_access_order, publish, publish_status, order_rooms
@@ -36,7 +37,8 @@ super_admin_bp = Blueprint('super_admin', __name__, url_prefix='/super-admin')
 @main_bp.app_context_processor
 def security_template_context():
     unread = recipient_query(current_user).filter(NotificationRecipient.is_read.is_(False)).count() if has_request_context() and current_user.is_authenticated else 0
-    return {'csrf_token': generate_csrf, 'notification_unread_count': unread, 'notification_audience_label': audience_label}
+    theme = normalize_theme(current_user.theme_color) if has_request_context() and current_user.is_authenticated else 'gold-classic'
+    return {'csrf_token': generate_csrf, 'notification_unread_count': unread, 'notification_audience_label': audience_label, 'current_theme': theme}
 
 
 @main_bp.before_app_request
@@ -770,17 +772,18 @@ def mark_order_received(order_id):
 @main_bp.route('/account/settings', methods=['GET', 'POST'])
 @login_required
 def account_settings():
-    if current_user.is_admin or current_user.is_delivery:
-        return redirect(url_for('main.dashboard'))
-    
     if request.method == 'POST':
-        theme = request.form.get('theme', 'gold')
+        if request.args or set(request.form) - {'csrf_token', 'theme'} or len(request.form.getlist('theme')) != 1:
+            abort(400, description='Formulario de apariencia inválido.')
+        theme = request.form.get('theme')
+        if theme not in THEMES:
+            abort(400, description='Tema inválido.')
         current_user.theme_color = theme
         db.session.commit()
         flash('Tema actualizado.', 'success')
         return redirect(url_for('main.account_settings'))
     
-    return render_template('account_settings.html', current_theme=current_user.theme_color or 'gold')
+    return render_template('account_settings.html', themes=THEMES)
 
 
 # ============ RECUPERACIÓN DE CONTRASEÑA (SOLO PREGUNTAS DE SEGURIDAD) ============
