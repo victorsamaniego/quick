@@ -260,3 +260,17 @@ test('dashboard template exposes server-calculated regions and refresh never rel
     assert.match(template, /<a id="realtime-orders-card"[\s\S]*?badge-pending[\s\S]*?<\/a>/);
     assert.doesNotMatch(source, /location\.(reload|assign|replace)\s*\(/);
 });
+
+test('four distinct event types map to their sound exactly once per entity', async () => {
+    const h = harness({user: {isDelivery: true}}); await h.unlock();
+    const cases = [
+        ['new_order', {order_id: 80, business_id: 7}, 'new_order'],
+        ['new_chat_message', {message: {id: 81, sender_id: 2}}, 'message'],
+        ['new_delivery_request', {request_id: 82, delivery_driver_id: 1}, 'delivery'],
+        ['order_status_update', {order_id: 83, event_id: 'done', status: 'delivered', old_status: 'on_way'}, 'completed']
+    ];
+    for (const [event, data] of cases) { h.emit(event, data); h.emit(event, data); }
+    h.emit('disconnect'); h.emit('connect'); h.emit('realtime_ready', {live_since: 100});
+    for (const [event, data] of cases) h.emit(event, data);
+    assert.deepEqual(h.counters.types, cases.map(([, , type]) => type));
+});

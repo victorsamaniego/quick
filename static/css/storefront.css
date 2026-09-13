@@ -1,0 +1,33 @@
+/* Progressive storefront palette; keep other account themes intact. */
+html body.storefront-modern { background: #f6f5f2 !important; color: #202124 !important; }
+body.storefront-modern .navbar { background: #fff !important; border-bottom: 1px solid #e8e5dd; box-shadow: 0 2px 12px #18181806; }
+body.storefront-modern .navbar-brand, body.storefront-modern .nav-link { color: #252525 !important; }
+body.storefront-modern .card { background: white !important; color: #202124 !important; border: 1px solid #e9e6de !important; box-shadow: 0 4px 18px #19191908 !important; overflow: hidden; }
+body.storefront-modern .card-body, body.storefront-modern .card-footer { background: white !important; color: #202124 !important; }
+body.storefront-modern .card-header { background: #faf9f6 !important; color: #202124 !important; border-bottom: 1px solid #e9e6de !important; }
+body.storefront-modern h1, body.storefront-modern h2, body.storefront-modern h3,
+body.storefront-modern h4, body.storefront-modern h5, body.storefront-modern h6 { color: #202124 !important; }
+body.storefront-modern .form-control, body.storefront-modern .form-select { background: #fff !important; color: #202124 !important; border: 1px solid #cbc9c2 !important; }
+body.storefront-modern .form-label { color: #333 !important; }
+body.storefront-modern .form-control:focus, body.storefront-modern .form-select:focus { border-color: #a47a20 !important; box-shadow: 0 0 0 3px #b78d2520; }
+body.storefront-modern .text-muted { color: #626465 !important; }
+body.storefront-modern .text-warning { color: #856018 !important; }
+body.storefront-modern .btn-warning { background: #202124 !important; border-color: #202124 !important; color: #fff !important; }
+body.storefront-modern .btn-outline-warning { color: #765719 !important; border-color: #a47a20 !important; }
+body.storefront-modern .btn-outline-warning:hover { background: #f4ead2 !important; }
+body.storefront-modern .text-success { color: #167246 !important; }
+body.storefront-modern .text-danger { color: #b42c3b !important; }
+body.storefront-modern .location-banner h5 { color: #fff !important; }
+body.storefront-modern footer { background: #202124 !important; }
+body.storefront-modern .product-card .card-title, body.storefront-modern .product-card-admin .card-title { line-height: 1.3; }
+body.storefront-modern .product-card-admin .card-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; font-size: .85rem; }
+body.storefront-modern .product-card-admin .card-title { grid-column: 1 / -1; }
+body.storefront-modern .product-card-admin .card-body p { overflow-wrap: anywhere; }
+body.storefront-modern .product-card .btn, body.storefront-modern .product-card-admin .btn { padding: 8px; min-height: 44px; }
+body.storefront-modern .product-card.card, body.storefront-modern .product-card-admin.card { margin-bottom: 0; }
+body.storefront-modern .business-name-badge { background: #f6f1e4; color: #72561a; padding: 3px 6px; font-size: .75rem; border-radius: 5px; }
+body.storefront-modern .login-card { border-radius: 24px; box-shadow: 0 16px 48px #17171712 !important; }
+body.storefront-modern .login-card:hover { transform: none; }
+@media (max-width: 359px) {
+    body.storefront-modern .product-card .btn { font-size: .75rem; }
+}

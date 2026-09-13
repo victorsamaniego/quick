@@ -1,12 +1,14 @@
 {% extends "base.html" %}
+{% block body_class %}storefront-modern{% endblock %}
 {% block title %}{{ product.name }} - Pods Luxury{% endblock %}
 
 {% block content %}
+<script src="{{ url_for('static', filename='js/storefront_status.js') }}" defer></script>
 <div class="container">
-    <div class="row g-4">
+    <div class="row g-4" data-storefront-business="{{ product.business_id }}" data-storefront-open="{{ 'true' if product.business and product.business.is_open else 'false' }}" data-storefront-active="{{ 'true' if product.business and product.business.is_active else 'false' }}">
         <div class="col-md-6">
             {% if product.image_url %}
-            <img src="{{ url_for('static', filename=product.image_url) }}" class="img-fluid rounded shadow-sm" alt="{{ product.name }}">
+            <img src="{{ product.image_url|smart_image }}" class="img-fluid rounded shadow-sm" style="width: 100%; height: 380px; object-fit: contain; padding: 20px; background: #f2e7ca;" alt="{{ product.name }}">
             {% else %}
             <div class="bg-light d-flex align-items-center justify-content-center rounded shadow-sm" style="height: 400px;"><i class="bi bi-image text-muted fs-1"></i></div>
             {% endif %}
@@ -15,14 +17,14 @@
             <h2 class="fw-bold mb-2">{{ product.name }}</h2>
             <p class="text-warning fs-3 fw-bold mb-3">GS {{ "{:,.0f}".format(product.price) }}</p>
             <p class="text-muted mb-3">{{ product.description }}</p>
-            <p class="mb-3"><i class="bi bi-box"></i> Stock disponible: <strong>{{ product.stock }}</strong></p>
-            {% if product.is_available %}
-            <form action="{{ url_for('main.add_to_cart', product_id=product.id) }}" method="POST">
+            <p class="mb-3"><i class="bi bi-box"></i> {{ 'Cerrado' if product.business and not product.business.is_open else ('Disponible' if product.is_available else 'Agotado') }}</p>
+            {% if product.is_available and product.business and product.business.is_active and product.business.is_open %}
+            <form data-storefront-business="{{ product.business_id }}" data-storefront-open="{{ 'true' if product.business and product.business.is_open else 'false' }}" data-storefront-active="{{ 'true' if product.business and product.business.is_active else 'false' }}" action="{{ url_for('main.add_to_cart', product_id=product.id) }}" method="POST">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn btn-warning btn-lg w-100 fw-semibold"><i class="bi bi-cart-plus"></i> Agregar al Carrito</button>
             </form>
             {% else %}
-            <button class="btn btn-secondary btn-lg w-100" disabled>Agotado</button>
+            <button class="btn btn-secondary btn-lg w-100" disabled>{{ 'Cerrado' if product.business and not product.business.is_open else ('Disponible' if product.is_available else 'Agotado') }}</button>
             {% endif %}
         </div>
     </div>

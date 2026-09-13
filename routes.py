@@ -453,7 +453,7 @@ def product_detail(product_id):
         return redirect(url_for('delivery.dashboard'))
     
     product = Product.query.get_or_404(product_id)
-    validate_product_access(product)
+    validate_product_access(product, allow_closed=True)
     if not product.is_available:
         flash('Este producto no esta disponible.', 'warning')
         return redirect(url_for('main.products'))
@@ -598,7 +598,10 @@ def create_order():
         cart_business_id = next(iter(business_ids))
         if session.get('cart_business_id', cart_business_id) != cart_business_id:
             abort(400, description='Negocio del carrito inválido.')
-        cart_business = db.session.get(Business, cart_business_id)
+        # Serialize checkout with merchant status updates; product locks protect stock.
+        cart_business = Business.query.filter_by(id=cart_business_id).populate_existing().with_for_update().first()
+        if cart_business and not cart_business.is_open:
+            abort(400, description='El negocio está cerrado. Tu carrito se conserva; intentá cuando vuelva a abrir.')
         if not cart_business or not cart_business.is_active:
             abort(400, description='Negocio no disponible.')
         if any(not p.is_available or p.stock < quantities[p.id] for p in locked):
@@ -1091,6 +1094,61 @@ def activate_subscription():
 
 # ============ ADMIN ROUTES ============
 
+@main_bp.route('/api/business-status')
+def business_status_snapshot():
+    # This snapshot contains only state already visible in the public catalog.
+    try:
+        ids = {int(value) for value in request.args.get('ids', '').split(',') if value}
+    except ValueError:
+        abort(400)
+    if len(ids) > 100 or any(not 0 < value <= 2147483647 for value in ids):
+        abort(400)
+    businesses = Business.query.filter(Business.id.in_(ids)).all()
+    response = jsonify({str(b.id): {'is_open': b.is_open, 'is_active': b.is_active} for b in businesses})
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
+@admin_bp.route('/business/status', methods=['POST'])
+@login_required
+@business_admin_required
+def update_business_status():
+    if current_user.is_delivery or current_user.is_super_admin or not current_user.business_id:
+        abort(403)
+    if request.args or set(request.form) - {'csrf_token', 'is_open'}:
+        abort(403)
+    if request.form.getlist('is_open') not in (['true'], ['false']):
+        abort(400)
+    business = Business.query.filter_by(id=current_user.business_id).with_for_update().first_or_404()
+    business.is_open = request.form['is_open'] == 'true'
+    db.session.commit()
+    from realtime import publish_business_status
+    publish_business_status(business)
+    flash('Negocio abierto.' if business.is_open else 'Negocio cerrado.', 'success')
+    return redirect(url_for('admin.dashboard'))
+
+
+@admin_bp.route('/business/location', methods=['POST'])
+@login_required
+@business_admin_required
+def update_business_location():
+    if current_user.is_delivery or current_user.is_super_admin or not current_user.business_id:
+        abort(403)
+    data = request.get_json(silent=True)
+    if request.args or not isinstance(data, dict) or set(data) != {'latitude', 'longitude'}:
+        abort(403)
+    try:
+        latitude, longitude = validar_coordenadas(data['latitude'], data['longitude'])
+    except (TypeError, ValueError):
+        abort(400, description='Coordenadas inválidas.')
+    business = db.session.get(Business, current_user.business_id)
+    if business is None:
+        abort(403)
+    business.latitude, business.longitude = latitude, longitude
+    db.session.commit()
+    return jsonify(message='Ubicación del negocio guardada')
+
+
 @admin_bp.route('/business/coverage', methods=['POST'])
 @login_required
 @business_admin_required
@@ -1106,6 +1164,20 @@ def update_business_coverage():
         abort(403)
     if any(len(request.form.getlist(key)) != 1 for key in request.form):
         abort(400, description='Formulario de cobertura inválido.')
+    # Coordinates are saved separately by the explicit geolocation action.
+    # Retain the former POST shape for backwards-compatible clients.
+    if 'latitude' not in request.form and 'longitude' not in request.form:
+        try:
+            radius = float(request.form.get('delivery_radius_km', ''))
+        except (TypeError, ValueError):
+            abort(400, description='Radio inválido.')
+        if radius not in (1, 2, 3, 5, 10, 15, 20, 30, 50) or len(request.form.get('address', '')) > 255:
+            abort(400, description='Dirección o radio inválidos.')
+        business.address = request.form.get('address', '').strip()
+        business.delivery_radius_km = radius
+        db.session.commit()
+        flash('Dirección y radio actualizados.', 'success')
+        return redirect(url_for('admin.dashboard'))
     form = BusinessCoverageForm()
     if not form.validate_on_submit():
         abort(400, description='Ubicación o radio inválidos, o formulario vencido. Volvé al panel e intentá nuevamente.')
@@ -2509,45 +2581,8 @@ def delete_user(user_id):
 @login_required
 @super_admin_required
 def analytics():
-    from sqlalchemy import func
-    thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
-    
-    revenue_by_business = db.session.query(
-        Business.name,
-        db.func.sum(Order.total_amount).label('revenue')
-    ).join(Order, Business.id == Order.business_id)\
-     .filter(Order.created_at >= thirty_days_ago, Order.status == 'delivered')\
-     .group_by(Business.id)\
-     .order_by(db.func.sum(Order.total_amount).desc())\
-     .all()
-    
-    seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
-    
-    orders_by_day = db.session.query(
-        db.func.date(Order.created_at).label('date'),
-        db.func.count(Order.id).label('count')
-    ).filter(Order.created_at >= seven_days_ago)\
-     .group_by(db.func.date(Order.created_at))\
-     .order_by(db.func.date(Order.created_at))\
-     .all()
-    
-    top_products = db.session.query(
-        Product.name,
-        Business.name.label('business_name'),
-        db.func.sum(OrderItem.quantity).label('sold')
-    ).join(OrderItem, Product.id == OrderItem.product_id)\
-     .join(Order, OrderItem.order_id == Order.id)\
-     .join(Business, Product.business_id == Business.id)\
-     .filter(Order.status == 'delivered')\
-     .group_by(Product.id)\
-     .order_by(db.func.sum(OrderItem.quantity).desc())\
-     .limit(10).all()
-    
-    return render_template('super_admin/analytics.html',
-        revenue_by_business=revenue_by_business,
-        orders_by_day=orders_by_day,
-        top_products=top_products
-    )
+    from analytics_service import analytics_data
+    return render_template('super_admin/analytics.html', **analytics_data())
 
 
 # ============ CHAT SOPORTE Y CHAT DELIVERY-NEGOCIO ============

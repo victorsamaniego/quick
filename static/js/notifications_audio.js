@@ -3,11 +3,15 @@
     'use strict';
     if (window.QuickGoAudio) return;
     const patterns = {
-        message: [[660, 0, .10]],
-        new_order: [[784, 0, .16], [988, .21, .16], [1175, .42, .22]],
-        delivery: [[440, 0, .23], [554, .30, .23]],
-        completed: [[880, 0, .08], [1320, .09, .13]]
+        message: [[1047, 0, .09]],
+        new_order: [[784, 0, .18], [784, .24, .18], [1175, .48, .24]],
+        delivery: [[440, 0, .22], [659, .32, .22]],
+        completed: [[880, 0, .13], [1320, .18, .25]]
     };
+    const levels = {message: .09, new_order: .22, delivery: .18, completed: .16};
+    // At most four non-overlapping envelopes per event: combined peak <= .88.
+    // Bursts never accumulate an unbounded number of oscillators or queued sounds.
+    let playingUntil = [];
     let context, unlocked = false, pending, muted = false;
     try { muted = localStorage.getItem('quickgo-sound') === 'off'; } catch (_) {}
     async function unlock() {
@@ -27,13 +31,16 @@
         if (muted || !unlocked || context?.state !== 'running' || !patterns[type]) return;
         try {
             const now = context.currentTime;
+            playingUntil = playingUntil.filter(end => end > now);
+            if (playingUntil.length >= 4) return;
+            playingUntil.push(now + Math.max(...patterns[type].map(([, delay, duration]) => delay + duration)) + .01);
             for (const [frequency, delay, duration] of patterns[type]) {
                 const oscillator = context.createOscillator(), gain = context.createGain();
-                oscillator.type = 'sine';
+                oscillator.type = type === 'delivery' ? 'triangle' : 'sine';
                 oscillator.frequency.value = frequency;
                 oscillator.connect(gain); gain.connect(context.destination);
                 gain.gain.setValueAtTime(.001, now + delay);
-                gain.gain.linearRampToValueAtTime(.055, now + delay + .01);
+                gain.gain.linearRampToValueAtTime(levels[type], now + delay + .01);
                 gain.gain.exponentialRampToValueAtTime(.001, now + delay + duration);
                 oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); };
                 oscillator.start(now + delay); oscillator.stop(now + delay + duration + .01);

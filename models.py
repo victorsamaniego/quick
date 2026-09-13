@@ -182,6 +182,7 @@ class Business(db.Model):
     latitude = db.Column(db.Float, nullable=True)
     longitude = db.Column(db.Float, nullable=True)
     delivery_radius_km = db.Column(db.Float, default=10.0)
+    is_open = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
     is_quickgold = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     requires_subscription = db.Column(db.Boolean, default=True)
     subscription_exempt_reason = db.Column(db.String(200), nullable=True)
@@ -202,7 +203,7 @@ class Business(db.Model):
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     admin_user = db.relationship('User', back_populates='business', lazy=True, uselist=False)
-    products = db.relationship('Product', lazy=True, cascade='all, delete-orphan')
+    products = db.relationship('Product', back_populates='business', lazy=True, cascade='all, delete-orphan')
     orders = db.relationship('Order', lazy=True)
     categories = db.relationship('Category', lazy=True)
     delivery_drivers = db.relationship('User', lazy=True,
@@ -294,6 +295,7 @@ class Product(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
+    business = db.relationship('Business', back_populates='products')
     order_items = db.relationship('OrderItem', lazy=True)
     
     @property

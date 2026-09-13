@@ -1,5 +1,6 @@
 {% extends "base.html" %}
-{% block title %}Admin Dashboard - Pods Luxury{% endblock %}
+{% block body_class %}storefront-modern{% endblock %}
+{% block title %}Admin Dashboard - QuickGo{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -96,12 +97,25 @@
     <!-- Header -->
     <div class="row mb-4">
         <div class="col-12">
-            <h2 class="fw-bold mb-1">👑 Panel de Administración</h2>
-            <p class="text-muted">Gestión completa de Pods Luxury</p>
+            <h2 class="fw-bold mb-1"><i class="bi bi-shop"></i> Mi negocio</h2>
+            <p class="text-muted">Gestión completa de QuickGo</p>
         </div>
     </div>
 
     {% if current_user.business %}
+    <section class="card border-0 shadow-sm mb-3">
+        <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-3">
+            <strong class="text-{{ 'success' if current_user.business.is_open else 'danger' }}">
+                <i class="bi bi-circle-fill" aria-hidden="true"></i> NEGOCIO {{ 'ABIERTO' if current_user.business.is_open else 'CERRADO' }}
+            </strong>
+            <form method="POST" action="{{ url_for('admin.update_business_status') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="is_open" value="{{ 'false' if current_user.business.is_open else 'true' }}">
+                <button class="btn btn-{{ 'outline-danger' if current_user.business.is_open else 'success' }}">{{ 'Cerrar negocio' if current_user.business.is_open else 'Abrir negocio' }}</button>
+            </form>
+        </div>
+    </section>
+    <script src="{{ url_for('static', filename='js/business_location.js') }}" defer></script>
     <section class="card border-0 shadow-sm mb-4" id="business-coverage">
         <div class="card-body">
             <form method="POST" action="{{ url_for('admin.update_business_coverage') }}">
@@ -112,15 +126,13 @@
                         {{ coverage_form.address.label(class="form-label") }}
                         {{ coverage_form.address(class="form-control", maxlength="255") }}
                     </div>
-                    <div class="col-md-3">
-                        {{ coverage_form.latitude.label(class="form-label") }}
-                        {{ coverage_form.latitude(class="form-control", type="number", step="any", min="-90", max="90", required=true) }}
-                    </div>
-                    <div class="col-md-3">
-                        {{ coverage_form.longitude.label(class="form-label") }}
-                        {{ coverage_form.longitude(class="form-control", type="number", step="any", min="-180", max="180", required=true) }}
-                    </div>
                 </div>
+                <p id="business-location-status" role="status">{{ 'Ubicación configurada' if current_user.business.latitude is not none and current_user.business.longitude is not none else 'Ubicación sin configurar' }}</p>
+                <button type="button" id="save-business-location" class="btn btn-outline-dark mb-3"
+                        data-url="{{ url_for('admin.update_business_location') }}">
+                    <i class="bi bi-geo-alt"></i> {{ 'Actualizar ubicación del negocio' if current_user.business.latitude is not none and current_user.business.longitude is not none else 'Usar ubicación de este negocio' }}
+                </button>
+                <p class="small text-muted">Esta ubicación fija es el centro de tu radio de cobertura.</p>
                 <h5 class="fw-bold">RADIO DE COBERTURA</h5>
                 <p class="text-muted mb-2">Radio actual: <strong>{{ current_user.business.delivery_radius_km if current_user.business.delivery_radius_km is not none else 'Sin configurar' }}{% if current_user.business.delivery_radius_km is not none %} km{% endif %}</strong>. Se aplica a todos los productos de tu negocio.</p>
                 <div class="row g-3 align-items-end">
@@ -129,7 +141,7 @@
                         {{ coverage_form.delivery_radius_km(class="form-select", required=true) }}
                     </div>
                     <div class="col-md-4">
-                        <button type="submit" class="btn btn-warning">Guardar ubicación y cobertura</button>
+                        <button type="submit" class="btn btn-warning">Guardar dirección y radio</button>
                     </div>
                 </div>
             </form>
@@ -212,7 +224,7 @@
             </a>
         </div>
         
-        <!-- ✅ BOTÓN DE PEDIDOS CON ALERTA -->
+        <!-- <i class="bi bi-check-circle" aria-hidden="true"></i> BOTÓN DE PEDIDOS CON ALERTA -->
         <div class="col-md-3">
             <a id="realtime-orders-card" href="{{ url_for('admin.manage_orders') }}"
                class="btn btn-orders-alert w-100 py-3 {% if pending_orders > 0 %}has-pending{% else %}no-pending{% endif %}">
@@ -220,9 +232,9 @@
                 <strong>Pedidos</strong>
                 <small class="d-block">
                     {% if pending_orders > 0 %}
-                        ⚠️ {{ pending_orders }} pendiente{{ 's' if pending_orders > 1 else '' }}
+                        <i class="bi bi-exclamation-triangle" aria-hidden="true"></i> {{ pending_orders }} pendiente{{ 's' if pending_orders > 1 else '' }}
                     {% else %}
-                        ✅ Sin pendientes
+                        <i class="bi bi-check-circle" aria-hidden="true"></i> Sin pendientes
                     {% endif %}
                 </small>
                 
@@ -256,7 +268,7 @@
         <div class="col-md-6">
             <div class="card border-0 shadow-sm">
                 <div class="card-header bg-white border-0 py-3">
-                    <h5 class="fw-bold mb-0">📊 Ventas por Categoría (30 días)</h5>
+                    <h5 class="fw-bold mb-0"><i class="bi bi-bar-chart" aria-hidden="true"></i> Ventas por Categoría (30 días)</h5>
                 </div>
                 <div class="card-body">
                     <div class="chart-container">
@@ -270,7 +282,7 @@
         <div class="col-md-6">
             <div class="card border-0 shadow-sm">
                 <div class="card-header bg-white border-0 py-3">
-                    <h5 class="fw-bold mb-0">📋 Pedidos por Estado</h5>
+                    <h5 class="fw-bold mb-0"><i class="bi bi-clipboard-check" aria-hidden="true"></i> Pedidos por Estado</h5>
                 </div>
                 <div class="card-body">
                     <div class="chart-container">
@@ -287,7 +299,7 @@
         <div class="col-md-8">
             <div class="card border-0 shadow-sm">
                 <div class="card-header bg-white border-0 py-3">
-                    <h5 class="fw-bold mb-0">📈 Ventas Diarias (7 días)</h5>
+                    <h5 class="fw-bold mb-0"><i class="bi bi-graph-up-arrow" aria-hidden="true"></i> Ventas Diarias (7 días)</h5>
                 </div>
                 <div class="card-body">
                     <div class="chart-container">
@@ -301,7 +313,7 @@
         <div class="col-md-4">
             <div class="card border-0 shadow-sm">
                 <div class="card-header bg-white border-0 py-3">
-                    <h5 class="fw-bold mb-0">📦 Top 10 Productos (Stock)</h5>
+                    <h5 class="fw-bold mb-0"><i class="bi bi-box-seam" aria-hidden="true"></i> Top 10 Productos (Stock)</h5>
                 </div>
                 <div class="card-body">
                     <div class="chart-container-small">
@@ -317,7 +329,7 @@
         <div class="col-lg-8">
             <div class="card border-0 shadow-sm">
                 <div class="card-header bg-white border-0 py-3">
-                    <h5 class="fw-bold mb-0">📦 Pedidos Recientes</h5>
+                    <h5 class="fw-bold mb-0"><i class="bi bi-box-seam" aria-hidden="true"></i> Pedidos Recientes</h5>
                 </div>
                 <div class="card-body p-0" id="realtime-orders">
                     {% if recent_orders %}
@@ -360,7 +372,7 @@
         <div class="col-lg-4">
             <div class="card border-0 shadow-sm">
                 <div class="card-header bg-white border-0 py-3">
-                    <h5 class="fw-bold mb-0">⚠️ Bajo Stock</h5>
+                    <h5 class="fw-bold mb-0"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i> Bajo Stock</h5>
                 </div>
                 <div class="card-body">
                     {% if low_stock_products %}
@@ -378,7 +390,7 @@
                         {% endfor %}
                     </div>
                     {% else %}
-                    <p class="text-muted text-center py-4">✅ Todo el stock está en niveles óptimos</p>
+                    <p class="text-muted text-center py-4"><i class="bi bi-check-circle" aria-hidden="true"></i> Todo el stock está en niveles óptimos</p>
                     {% endif %}
                 </div>
             </div>
