@@ -82,12 +82,14 @@ def private_credential_response(value, title, return_url):
     return response
 
 
-def validate_product_access(product, location=None):
-    """The geographic behavior change is opt-in until destination compatibility is accepted."""
+def validate_product_access(product, location=None, *, allow_closed=False):
+    """Validate purchase eligibility; detail views may show a closed storefront."""
     from flask import current_app, session
     from models import db, Business
     from routes import validar_coordenadas, calcular_distancia_negocio_km
     business = db.session.get(Business, product.business_id) if product.business_id else None
+    if business and not business.is_open and not allow_closed:
+        abort(400, description='El negocio está cerrado y no acepta pedidos en este momento.')
     if not business or not business.is_active or not product.is_available or product.stock <= 0:
         abort(400, description='Producto o negocio no disponible.')
     if not current_app.config.get('SECURITY_ENFORCE_COVERAGE', False):

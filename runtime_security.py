@@ -29,7 +29,9 @@ def configure_runtime_security(app):
     for key in ('RESET_SMTP_HOST', 'RESET_SMTP_USERNAME', 'RESET_SMTP_PASSWORD', 'RESET_MAIL_FROM'):
         app.config[key] = os.environ.get(key, '')
     app.config['RESET_SMTP_PORT'] = int(os.environ.get('RESET_SMTP_PORT', '465'))
-    app.config['SECURITY_ENFORCE_COVERAGE'] = os.environ.get('SECURITY_ENFORCE_COVERAGE', '').lower() == 'true'
+    # Storefront purchases must enforce coverage in production. Keep the local
+    # REV3 compatibility mode for fixtures and explicit preproduction checks.
+    app.config['SECURITY_ENFORCE_COVERAGE'] = production or os.environ.get('SECURITY_ENFORCE_COVERAGE', '').lower() == 'true'
     # Optional until the operator verifies every hostname used by staging/health checks.
     hosts = os.environ.get('TRUSTED_HOSTS', '')
     if hosts:

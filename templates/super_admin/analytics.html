@@ -49,7 +49,7 @@
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <h6 class="mb-1">📦 Total Pedidos</h6>
-                            <h3 class="mb-0">{{ orders_by_day|sum(attribute='count') }}</h3>
+                            <h3 class="mb-0">{{ orders_by_day|sum(attribute='order_count') }}</h3>
                         </div>
                         <i class="bi bi-box-seam fs-1 opacity-50"></i>
                     </div>
@@ -62,7 +62,7 @@
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <h6 class="mb-1"> Negocios Activos</h6>
-                            <h3 class="mb-0">{{ revenue_by_business|length }}</h3>
+                            <h3 class="mb-0">{{ active_business_count }}</h3>
                         </div>
                         <i class="bi bi-shop fs-1 opacity-50"></i>
                     </div>
@@ -252,12 +252,12 @@
                                 <tr>
                                     <td><strong>{{ item.date }}</strong></td>
                                     <td class="text-center">
-                                        <span class="badge bg-info fs-6">{{ item.count }}</span>
+                                        <span class="badge bg-info fs-6">{{ item.order_count }}</span>
                                     </td>
                                     <td class="text-end">
-                                        {% if loop.index > 1 and item.count > orders_by_day[loop.index0 - 1].count %}
+                                        {% if loop.index > 1 and item.order_count > orders_by_day[loop.index0 - 1].order_count %}
                                         <span class="text-success">📈 Subiendo</span>
-                                        {% elif loop.index > 1 and item.count < orders_by_day[loop.index0 - 1].count %}
+                                        {% elif loop.index > 1 and item.order_count < orders_by_day[loop.index0 - 1].order_count %}
                                         <span class="text-danger"> Bajando</span>
                                         {% else %}
                                         <span class="text-muted">➡️ Estable</span>
@@ -290,10 +290,10 @@ const revenueCtx = document.getElementById('revenueByBusinessChart').getContext(
 new Chart(revenueCtx, {
     type: 'bar',
     data: {
-        labels: [{% for item in revenue_by_business %}'{{ item.name }}'{% if not loop.last %}, {% endif %}{% endfor %}],
+        labels: {{ revenue_by_business|map(attribute='name')|list|tojson }},
         datasets: [{
             label: 'Revenue (GS)',
-            data: [{% for item in revenue_by_business %}{{ item.revenue }}{% if not loop.last %}, {% endif %}{% endfor %}],
+            data: {{ revenue_by_business|map(attribute='revenue')|list|tojson }},
             backgroundColor: [
                 'rgba(255, 99, 132, 0.8)',
                 'rgba(54, 162, 235, 0.8)',
@@ -340,10 +340,10 @@ const ordersCtx = document.getElementById('ordersByDayChart').getContext('2d');
 new Chart(ordersCtx, {
     type: 'line',
     data: {
-        labels: [{% for item in orders_by_day %}'{{ item.date }}'{% if not loop.last %}, {% endif %}{% endfor %}],
+        labels: {{ orders_by_day|map(attribute='date')|list|tojson }},
         datasets: [{
             label: 'Pedidos',
-            data: [{% for item in orders_by_day %}{{ item.count }}{% if not loop.last %}, {% endif %}{% endfor %}],
+            data: {{ orders_by_day|map(attribute='order_count')|list|tojson }},
             borderColor: 'rgba(75, 192, 192, 1)',
             backgroundColor: 'rgba(75, 192, 192, 0.2)',
             tension: 0.4,
@@ -370,9 +370,9 @@ const productsCtx = document.getElementById('topProductsChart').getContext('2d')
 new Chart(productsCtx, {
     type: 'doughnut',
     data: {
-        labels: [{% for product in top_products[:5] %}'{{ product.name }}'{% if not loop.last %}, {% endif %}{% endfor %}],
+        labels: {{ top_products[:5]|map(attribute='name')|list|tojson }},
         datasets: [{
-            data: [{% for product in top_products[:5] %}{{ product.sold }}{% if not loop.last %}, {% endif %}{% endfor %}],
+            data: {{ top_products[:5]|map(attribute='sold')|list|tojson }},
             backgroundColor: [
                 'rgba(255, 99, 132, 0.8)',
                 'rgba(54, 162, 235, 0.8)',
@@ -394,14 +394,14 @@ new Chart(productsCtx, {
     }
 });
 
-// Gráfico de Estado de Pedidos (simulado - deberías agregar esta consulta en routes.py)
+// Distribución real de pedidos por estado
 const statusCtx = document.getElementById('orderStatusChart').getContext('2d');
 new Chart(statusCtx, {
     type: 'pie',
     data: {
-        labels: ['Entregados', 'Pendientes', 'Enviados', 'Cancelados'],
+        labels: {{ order_statuses|map(attribute='status')|list|tojson }},
         datasets: [{
-            data: [65, 20, 10, 5], // Estos valores deberían venir de tu backend
+            data: {{ order_statuses|map(attribute='order_count')|list|tojson }},
             backgroundColor: [
                 'rgba(40, 167, 69, 0.8)',
                 'rgba(255, 193, 7, 0.8)',

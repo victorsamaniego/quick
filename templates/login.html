@@ -1,23 +1,38 @@
 {% extends "base.html" %}
+{% block body_class %}storefront-modern{% endblock %}
 {% block title %}Iniciar Sesión - QuickGo{% endblock %}
 
+{% block extra_css %}
+<style>
+.login-shell { max-width: 480px; margin: 3vh auto; }
+.login-card { border-radius: 24px; border: 1px solid #ece8de; box-shadow: 0 16px 48px #17171712; background: #fff; }
+.login-card .card-body { padding: clamp(24px, 6vw, 42px); }
+.login-brand { font-size: 1.8rem; letter-spacing: -.07em; color: #191919; }
+.login-brand span { color: #a77b1c; }
+.login-card .form-control, .login-card .input-group-text, .login-card button { min-height: 44px; }
+.login-card .input-group-text { background: #faf9f6; }
+.login-card .btn-warning { background: #181818; border-color: #181818; color: white; border-radius: 10px; }
+.login-card .btn-warning:hover { background: #3a3020; }
+.login-card a { color: #826018 !important; }
+</style>
+{% endblock %}
 {% block content %}
 <div class="container py-5">
     <div class="row justify-content-center">
-        <div class="col-md-5">
-            <div class="card border-0 shadow-lg">
-                <div class="card-body p-5">
-                    <h3 class="fw-bold text-center mb-4">👋 Iniciar Sesión</h3>
+        <div class="login-shell">
+            <div class="card login-card">
+                <div class="card-body">
+                    <div class="login-brand fw-bold text-center mb-4">Quick<span>Go</span></div><h1 class="h4 fw-bold text-center">Bienvenido de nuevo</h1><p class="text-muted text-center mb-4">Ingresá a tu cuenta para continuar.</p>
                     
                     <form method="POST">
                         {{ form.hidden_tag() }}
                         
                         <!-- 🔥 USERNAME O EMAIL -->
                         <div class="mb-3">
-                            <label class="form-label fw-semibold">Usuario o Email</label>
+                            <label for="username" class="form-label fw-semibold">Usuario o Email</label>
                             <div class="input-group">
                                 <span class="input-group-text"><i class="bi bi-person-circle"></i></span>
-                                {{ form.username(class="form-control", placeholder="juan_perez123 o tu@email.com", autofocus=true) }}
+                                {{ form.username(class="form-control", placeholder="Usuario o email", autocomplete="username", autofocus=true) }}
                             </div>
                             <small class="text-muted">Podés usar tu nombre de usuario o email</small>
                             {% for error in form.username.errors %}
@@ -27,11 +42,11 @@
                         
                         <!-- CONTRASEÑA -->
                         <div class="mb-3">
-                            <label class="form-label fw-semibold">Contraseña</label>
+                            <label for="password" class="form-label fw-semibold">Contraseña</label>
                             <div class="input-group">
                                 <span class="input-group-text"><i class="bi bi-lock"></i></span>
-                                {{ form.password(class="form-control", placeholder="••••••••") }}
-                                <button type="button" class="btn btn-outline-secondary" id="togglePassword">
+                                {{ form.password(class="form-control", placeholder="••••••••", autocomplete="current-password") }}
+                                <button type="button" class="btn btn-outline-secondary" id="togglePassword" aria-label="Mostrar u ocultar contraseña">
                                     <i class="bi bi-eye"></i>
                                 </button>
                             </div>
@@ -56,7 +71,7 @@
                     <!-- 🔥 NUEVOS ENLACES -->
                     <div class="text-center">
                         <a href="{{ url_for('main.recover_account') }}" class="text-warning fw-semibold d-block mb-2">
-                            🔐 ¿Olvidaste tu contraseña? Recuperar mi entrada
+                            ¿Olvidaste tu contraseña?
                         </a>
                         <p class="text-muted small mb-0">
                             ¿No tenés cuenta? <a href="{{ url_for('main.register') }}" class="fw-semibold">Registrate aquí</a>

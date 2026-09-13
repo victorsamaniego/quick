@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block body_class %}storefront-modern{% endblock %}
 {% block title %}Dashboard - QuickGo{% endblock %}
 
 {% block extra_css %}
@@ -6,6 +7,7 @@
 {% endblock %}
 
 {% block content %}
+<script src="{{ url_for('static', filename='js/storefront_status.js') }}" defer></script>
 <div class="container py-4">
     <!-- Saludo -->
     <div class="row mb-4">
@@ -157,7 +159,7 @@
                                         <div class="rounded-circle d-flex align-items-center justify-content-center mx-auto mb-2
                                             {% if pending_order.status == 'delivered' %}bg-success{% else %}bg-secondary{% endif %} text-white" 
                                             style="width: 50px; height: 50px; font-size: 1.2rem;">
-                                            ✅
+                                            <i class="bi bi-check-circle"></i>
                                         </div>
                                         <small class="d-block fw-bold 
                                             {% if pending_order.status == 'delivered' %}text-success{% else %}text-white{% endif %}">Entregado</small>
@@ -286,25 +288,25 @@
         </div>
     </div>
 
-    <div class="row g-4">
+    <div class="row g-3">
         {% for product in featured_products %}
-        <div class="col-6 col-md-4 col-lg-3">
+        <div class="col-6 col-md-4 col-lg-3 col-xl-2">
             <div class="card border-0 shadow-sm h-100">
                 {% if product.image_url %}
                     {% if product.image_url.startswith('uploads/') %}
                         <img src="{{ product.image_url|smart_image }}" 
                              class="card-img-top" alt="{{ product.name }}" 
-                             style="height: 200px; object-fit: cover;"
+                             style="height: 140px; object-fit: contain; padding: 12px; background: linear-gradient(135deg, #faf6ea, #e8d7a4);"
                              onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Sin+Imagen';">
                     {% else %}
                         <img src="{{ product.image_url|smart_image }}" 
                              class="card-img-top" alt="{{ product.name }}" 
-                             style="height: 200px; object-fit: cover;"
+                             style="height: 140px; object-fit: contain; padding: 12px; background: linear-gradient(135deg, #faf6ea, #e8d7a4);"
                              onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Sin+Imagen';">
                     {% endif %}
                 {% else %}
                     <div class="card-img-top bg-light d-flex align-items-center justify-content-center" 
-                         style="height: 200px;">
+                         style="height: 140px; background: #f2e7ca;">
                         <i class="bi bi-image text-muted fs-1"></i>
                     </div>
                 {% endif %}
@@ -316,17 +318,17 @@
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <span class="text-warning fw-bold fs-5">GS {{ "{:,.0f}".format(product.price | default(0)) }}</span>
                             <small class="text-muted">
-                                <i class="bi bi-box"></i> {{ product.stock | default(0) }}
+                                <i class="bi bi-box"></i> {{ 'Cerrado' if product.business and not product.business.is_open else ('Disponible' if product.is_available else 'Agotado') }}
                             </small>
                         </div>
-                        <form action="{{ url_for('main.add_to_cart', product_id=product.id) }}" method="POST">
+                        <form data-storefront-business="{{ product.business_id }}" data-storefront-open="{{ 'true' if product.business and product.business.is_open else 'false' }}" data-storefront-active="{{ 'true' if product.business and product.business.is_active else 'false' }}" action="{{ url_for('main.add_to_cart', product_id=product.id) }}" method="POST">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <button type="submit" class="btn btn-warning w-100" 
-                                    {% if not product.is_available %}disabled{% endif %}>
-                                {% if product.is_available %}
+                                    {% if not product.is_available or not product.business or not product.business.is_active or not product.business.is_open %}disabled{% endif %}>
+                                {% if product.is_available and product.business and product.business.is_active and product.business.is_open %}
                                     <i class="bi bi-cart-plus"></i> Agregar
                                 {% else %}
-                                    <i class="bi bi-x-circle"></i> Sin stock
+                                    <i class="bi bi-x-circle"></i> {{ 'Cerrado' if product.business and not product.business.is_open else ('Disponible' if product.is_available else 'Agotado') }}
                                 {% endif %}
                             </button>
                         </form>

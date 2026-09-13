@@ -68,6 +68,19 @@ def publish(event, payload, rooms):
         current_app.logger.exception('Realtime emission failed after persistence: %s', event)
 
 
+def publish_business_status(business):
+    """Broadcast only public storefront state, never private merchant data."""
+    if 'socketio' not in current_app.extensions:
+        return
+    try:
+        socketio.emit('business_status_update', {
+            'business_id': business.id, 'is_open': business.is_open,
+            'is_active': business.is_active,
+        })
+    except Exception:
+        current_app.logger.exception('Storefront status emission failed after persistence')
+
+
 def order_rooms(order):
     rooms = [f'order_{order.id}', f'user_{order.user_id}', f'business_{order.business_id}']
     if order.delivery_driver_id:
