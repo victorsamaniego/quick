@@ -107,9 +107,10 @@ def create_app(config_class=Config):
     # Context processor con tema global
     @app.context_processor
     def inject_globals():
-        theme = 'gold'
+        from themes import normalize_theme
+        theme = normalize_theme(None)
         if current_user.is_authenticated and current_user.theme_color:
-            theme = current_user.theme_color
+            theme = normalize_theme(current_user.theme_color)
         
         return {
             'now': datetime.now(timezone.utc),

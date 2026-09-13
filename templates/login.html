@@ -1,20 +1,9 @@
 {% extends "base.html" %}
-{% block body_class %}storefront-modern{% endblock %}
+{% block body_class %}qg-login{% endblock %}
 {% block title %}Iniciar Sesión - QuickGo{% endblock %}
 
 {% block extra_css %}
-<style>
-.login-shell { max-width: 480px; margin: 3vh auto; }
-.login-card { border-radius: 24px; border: 1px solid #ece8de; box-shadow: 0 16px 48px #17171712; background: #fff; }
-.login-card .card-body { padding: clamp(24px, 6vw, 42px); }
-.login-brand { font-size: 1.8rem; letter-spacing: -.07em; color: #191919; }
-.login-brand span { color: #a77b1c; }
-.login-card .form-control, .login-card .input-group-text, .login-card button { min-height: 44px; }
-.login-card .input-group-text { background: #faf9f6; }
-.login-card .btn-warning { background: #181818; border-color: #181818; color: white; border-radius: 10px; }
-.login-card .btn-warning:hover { background: #3a3020; }
-.login-card a { color: #826018 !important; }
-</style>
+<link href="{{ url_for('static', filename='css/login.css') }}" rel="stylesheet">
 {% endblock %}
 {% block content %}
 <div class="container py-5">
@@ -22,7 +11,7 @@
         <div class="login-shell">
             <div class="card login-card">
                 <div class="card-body">
-                    <div class="login-brand fw-bold text-center mb-4">Quick<span>Go</span></div><h1 class="h4 fw-bold text-center">Bienvenido de nuevo</h1><p class="text-muted text-center mb-4">Ingresá a tu cuenta para continuar.</p>
+                    <div class="login-brand fw-bold text-center mb-4" aria-label="QuickGo"><span class="login-quick" aria-hidden="true">Quick</span><span class="login-go" aria-hidden="true">Go</span></div><h1 class="h4 fw-bold text-center">Bienvenido de nuevo</h1><p class="text-muted text-center mb-4">Ingresá a tu cuenta para continuar.</p>
                     
                     <form method="POST">
                         {{ form.hidden_tag() }}

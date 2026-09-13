@@ -415,6 +415,9 @@ window.currentUser = {
 };
 
 document.addEventListener('DOMContentLoaded', function() {
+    const palette = getComputedStyle(document.body);
+    Chart.defaults.color = palette.getPropertyValue('--qg-text-muted').trim() || Chart.defaults.color;
+    Chart.defaults.borderColor = palette.getPropertyValue('--qg-border').trim() || Chart.defaults.borderColor;
     // ===== GRÁFICO 1: Ventas por Categoría =====
     const categoryCtx = document.getElementById('categoryChart');
     if (categoryCtx) {
