@@ -40,5 +40,5 @@ test('no-store and redirected assets never enter cache, including install', asyn
 test('activate purges old QuickGo private cache and preserves unrelated caches', async () => {
     const w = worker(); let pending;
     w.events.activate({waitUntil(p) {pending = p;}}); await pending;
-    assert.deepEqual(w.deleted, ['quickgo-v1']);
+    assert.deepEqual(w.deleted, ['quickgo-v1', 'quickgo-public-v2']);
 });

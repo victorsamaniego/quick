@@ -274,3 +274,24 @@ test('four distinct event types map to their sound exactly once per entity', asy
     for (const [event, data] of cases) h.emit(event, data);
     assert.deepEqual(h.counters.types, cases.map(([, , type]) => type));
 });
+
+test('superadmin notification uses its own sound once and only for the current audience', async () => {
+    for (const [audience, user] of [['customer',{isAdmin:false}],['business',{}],['delivery',{isDelivery:true}]]) {
+        const h=harness({user}); await h.unlock();
+        let rendered=0; h.window.QuickRealtime.on('superadmin_notification',()=>rendered++);
+        h.emit('superadmin_notification',{notification_id:301,audience:'unknown',title:'No'});
+        assert.equal(rendered,0);
+        const data={notification_id:302,audience,title:'Aviso',message:'Text'};
+        h.emit('superadmin_notification',data); h.emit('disconnect'); h.emit('connect');
+        h.emit('realtime_ready',{live_since:100}); h.emit('superadmin_notification',data);
+        assert.deepEqual(h.counters.types,['announcement']);
+        assert.equal(rendered,2); // the inbox independently deduplicates visual items
+    }
+});
+
+test('notification HTTP recovery seeds dedup and never replays sound on reconnect', async () => {
+    const h=harness(); await h.unlock();
+    h.window.QuickRealtime.remember('notification:410');
+    h.emit('superadmin_notification',{notification_id:410,audience:'business'});
+    assert.equal(h.counters.sounds,0);
+});

@@ -16,15 +16,7 @@
                 <div class="card-body p-4">
                     <div class="mb-3">
                         <strong>Tipo:</strong>
-                        {% if notification.notification_type == 'all' %}
-                            <span class="badge bg-primary">👥 Todos los usuarios</span>
-                        {% elif notification.notification_type == 'business' %}
-                            <span class="badge bg-warning text-dark">🏪 Comerciantes</span>
-                        {% elif notification.notification_type == 'delivery' %}
-                            <span class="badge bg-info">🛵 Deliverys</span>
-                        {% elif notification.notification_type == 'customer' %}
-                            <span class="badge bg-success">🛒 Compradores</span>
-                        {% endif %}
+                        {{ notification_audience_label(notification.notification_type) }}
                     </div>
                     
                     <div class="mb-3">
@@ -60,9 +52,9 @@
                                     <td>{{ recipient.user.email }}</td>
                                     <td>
                                         {% if recipient.is_read %}
-                                            <span class="badge bg-success">✅</span>
+                                            <span class="badge bg-success"><i class="bi bi-check-circle" aria-hidden="true"></i></span>
                                         {% else %}
-                                            <span class="badge bg-secondary">⏳</span>
+                                            <span class="badge bg-secondary"><i class="bi bi-clock" aria-hidden="true"></i></span>
                                         {% endif %}
                                     </td>
                                 </tr>

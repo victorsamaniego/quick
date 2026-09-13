@@ -1,55 +1,42 @@
 {% extends "base.html" %}
-{% block title %}Nueva Notificación Masiva{% endblock %}
-
+{% block title %}Nueva notificación · QuickGo{% endblock %}
 {% block content %}
-<div class="container py-5">
-    <div class="row justify-content-center">
-        <div class="col-md-8">
-            <div class="card border-0 shadow-lg">
-                <div class="card-header bg-primary text-white">
-                    <h4 class="mb-0">📢 Nueva Notificación Masiva</h4>
-                </div>
-                <div class="card-body p-4">
-                    <form method="POST">
-<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">Tipo de Destinatarios</label>
-                            <select name="notification_type" class="form-select" required>
-                                <option value="all">👥 Todos los usuarios</option>
-                                <option value="business">🏪 Solo Comerciantes</option>
-                                <option value="delivery"> Solo Deliverys</option>
-                                <option value="customer">🛒 Solo Compradores</option>
-                            </select>
-                            <small class="text-muted">Selecciona a quién va dirigida la notificación</small>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">Título</label>
-                            <input type="text" name="title" class="form-control" placeholder="Ej: Mantenimiento programado" required>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">Mensaje</label>
-                            <textarea name="message" class="form-control" rows="6" placeholder="Escribí el contenido de la notificación..." required></textarea>
-                        </div>
-                        
-                        <div class="alert alert-info">
-                            <i class="bi bi-info-circle"></i> 
-                            La notificación se enviará a todos los usuarios del tipo seleccionado y aparecerá en su panel de notificaciones.
-                        </div>
-                        
-                        <div class="d-flex gap-2">
-                            <button type="submit" class="btn btn-primary">
-                                📤 Enviar Notificación
-                            </button>
-                            <a href="{{ url_for('super_admin.notifications_list') }}" class="btn btn-secondary">
-                                ← Cancelar
-                            </a>
-                        </div>
-                    </form>
-                </div>
+<div class="container py-4" style="max-width: 850px">
+    <header class="catalog-intro mb-4">
+        <span class="quickgo-eyebrow">COMUNICACIÓN QUICKGO</span>
+        <h1 class="h2"><i class="bi bi-megaphone"></i> Nueva notificación</h1>
+        <p>Elegí quién debe recibir tu mensaje. Cada grupo lo verá en su propio panel.</p>
+    </header>
+    <div class="card"><div class="card-body p-4">
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="mb-3">
+                <label for="notification-title" class="form-label">Título</label>
+                <input id="notification-title" name="title" class="form-control" maxlength="200" placeholder="Una novedad para nuestra comunidad" required>
             </div>
-        </div>
-    </div>
+            <div class="mb-4">
+                <label for="notification-message" class="form-label">Mensaje</label>
+                <textarea id="notification-message" name="message" class="form-control" maxlength="2000" rows="5" placeholder="Escribí un mensaje claro y breve…" required></textarea>
+            </div>
+            <fieldset class="mb-4">
+                <legend class="h6">Destinatarios</legend>
+                <div class="row g-2">
+                    {% for value, label, icon in [('customer', 'Compradores', 'bag'), ('business', 'Comercios', 'shop'), ('delivery', 'Delivery', 'bicycle')] %}
+                    <div class="col-12 col-sm-4">
+                        <label class="audience-choice d-flex align-items-center gap-2 p-3">
+                            <input type="checkbox" class="form-check-input m-0" name="audiences" value="{{ value }}">
+                            <i class="bi bi-{{ icon }}" aria-hidden="true"></i> {{ label }}
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+                <p class="small text-muted mt-2 mb-0">Seleccioná uno, varios o los tres grupos. Se enviará una sola notificación por persona.</p>
+            </fieldset>
+            <div class="d-flex gap-2 flex-wrap">
+                <button class="btn btn-warning" type="submit"><i class="bi bi-send"></i> Enviar notificación</button>
+                <a class="btn btn-outline-secondary" href="{{ url_for('super_admin.notifications_list') }}">Cancelar</a>
+            </div>
+        </form>
+    </div></div>
 </div>
 {% endblock %}

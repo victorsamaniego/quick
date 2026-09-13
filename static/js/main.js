@@ -36,6 +36,11 @@
         data = data || {};
         if (event === 'new_order' && (!user || !user.isAdmin || Number(data.business_id) !== Number(user.businessId))) return;
         let key, type;
+        if (event === 'superadmin_notification' && data.notification_id != null) {
+            const audience = user?.isSuperAdmin ? null : user?.isDelivery ? 'delivery' : user?.isAdmin ? 'business' : 'customer';
+            if (!user || data.audience !== audience) return;
+            key = 'notification:' + data.notification_id; type = 'announcement';
+        }
         if (event === 'new_chat_message' && data.message?.id != null) key = 'chat:' + data.message.id;
         if (event === 'private_chat_message' && data.channel && data.message?.id != null) key = data.channel + ':' + data.message.id;
         if (event === 'new_order' && data.order_id != null) { key = 'order:' + data.order_id; type = 'new_order'; }
@@ -118,6 +123,7 @@
     window.playNotificationSound = sound;
     on('new_chat_message', () => {});
     on('private_chat_message', () => {});
+    on('superadmin_notification', () => {});
     on('new_order', refreshOrders);
     on('new_delivery_request', refreshOrders);
     on('order_status_update', data => {

@@ -2,6 +2,12 @@
 {% block title %}{{ notification.title }}{% endblock %}
 
 {% block content %}
+{% if recipient and not recipient.is_read %}
+<form class="container pt-3" method="POST" action="{{ url_for('main.read_user_notification', notification_id=notification.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-warning"><i class="bi bi-check2"></i> Marcar como leída</button>
+</form>
+{% endif %}
 <div class="container py-5">
     <div class="row justify-content-center">
         <div class="col-md-8">

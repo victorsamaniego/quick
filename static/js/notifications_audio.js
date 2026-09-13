@@ -4,11 +4,12 @@
     if (window.QuickGoAudio) return;
     const patterns = {
         message: [[1047, 0, .09]],
+        announcement: [[523, 0, .09], [784, .14, .14]],
         new_order: [[784, 0, .18], [784, .24, .18], [1175, .48, .24]],
         delivery: [[440, 0, .22], [659, .32, .22]],
         completed: [[880, 0, .13], [1320, .18, .25]]
     };
-    const levels = {message: .09, new_order: .22, delivery: .18, completed: .16};
+    const levels = {message: .09, new_order: .22, delivery: .18, completed: .16, announcement: .12};
     // At most four non-overlapping envelopes per event: combined peak <= .88.
     // Bursts never accumulate an unbounded number of oscillators or queued sounds.
     let playingUntil = [];

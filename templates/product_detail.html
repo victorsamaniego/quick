@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block body_class %}storefront-modern{% endblock %}
-{% block title %}{{ product.name }} - Pods Luxury{% endblock %}
+{% block title %}{{ product.name }} - QuickGo{% endblock %}
 
 {% block content %}
 <script src="{{ url_for('static', filename='js/storefront_status.js') }}" defer></script>
@@ -16,7 +16,8 @@
         <div class="col-md-6">
             <h2 class="fw-bold mb-2">{{ product.name }}</h2>
             <p class="text-warning fs-3 fw-bold mb-3">GS {{ "{:,.0f}".format(product.price) }}</p>
-            <p class="text-muted mb-3">{{ product.description }}</p>
+            {% if product.description %}<p class="text-muted mb-3">{{ product.description }}</p>{% endif %}
+            {% if product.business %}<p class="text-muted mb-3"><i class="bi bi-shop"></i> {{ product.business.name }}</p>{% endif %}
             <p class="mb-3"><i class="bi bi-box"></i> {{ 'Cerrado' if product.business and not product.business.is_open else ('Disponible' if product.is_available else 'Agotado') }}</p>
             {% if product.is_available and product.business and product.business.is_active and product.business.is_open %}
             <form data-storefront-business="{{ product.business_id }}" data-storefront-open="{{ 'true' if product.business and product.business.is_open else 'false' }}" data-storefront-active="{{ 'true' if product.business and product.business.is_active else 'false' }}" action="{{ url_for('main.add_to_cart', product_id=product.id) }}" method="POST">

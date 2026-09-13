@@ -4,8 +4,9 @@ from security import lock_user_role_change, validate_role_change, private_creden
 from security import validate_product_access
 from uuid import uuid4
 from inventory import inventory_summary, inventory_money
+from notifications_service import create_broadcast, recipient_query, audience_label, payload as notification_payload, user_audience
 from realtime import can_access_order, publish, publish_status, order_rooms
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, session, abort
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, session, abort, has_request_context
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta, timezone
@@ -34,7 +35,8 @@ super_admin_bp = Blueprint('super_admin', __name__, url_prefix='/super-admin')
 
 @main_bp.app_context_processor
 def security_template_context():
-    return {'csrf_token': generate_csrf}
+    unread = recipient_query(current_user).filter(NotificationRecipient.is_read.is_(False)).count() if has_request_context() and current_user.is_authenticated else 0
+    return {'csrf_token': generate_csrf, 'notification_unread_count': unread, 'notification_audience_label': audience_label}
 
 
 @main_bp.before_app_request
@@ -453,16 +455,16 @@ def product_detail(product_id):
         return redirect(url_for('delivery.dashboard'))
     
     product = Product.query.get_or_404(product_id)
-    validate_product_access(product, allow_closed=True)
-    if not product.is_available:
-        flash('Este producto no esta disponible.', 'warning')
-        return redirect(url_for('main.products'))
+    location = session.get('user_location') or {'latitude': session.get('user_latitude', -25.2637), 'longitude': session.get('user_longitude', -57.5759)}
+    validate_product_access(product, location, allow_closed=True, require_stock=False)
     return render_template('product_detail.html', product=product)
 
 
 @main_bp.route('/cart/add/<int:product_id>', methods=['POST'])
-@login_required
 def add_to_cart(product_id):
+    if not current_user.is_authenticated:
+        flash('Para agregar productos al carrito, iniciá sesión o registrate.', 'info')
+        return redirect(url_for('main.login', next=url_for('main.product_detail', product_id=product_id)))
     if current_user.is_admin or current_user.is_delivery:
         flash('No puedes realizar compras.', 'warning')
         return redirect(url_for('main.dashboard'))
@@ -1005,7 +1007,9 @@ def check_username():
 
 @main_bp.route('/api/update-user-location', methods=['POST'])
 def update_user_location():
-    data = request.get_json()
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'status': 'error', 'message': 'Coordenadas inválidas'}), 400
     try:
         latitude, longitude = validar_coordenadas(data.get('latitude'), data.get('longitude'))
     except (TypeError, ValueError):
@@ -1013,6 +1017,7 @@ def update_user_location():
 
     session['user_latitude'] = latitude
     session['user_longitude'] = longitude
+    session['user_location'] = {'latitude': latitude, 'longitude': longitude}
     session.modified = True
 
     negocios_cercanos = obtener_negocios_cercanos(latitude, longitude)
@@ -2812,52 +2817,15 @@ def notifications_list():
 @login_required
 @super_admin_required
 @limiter.limit('20 per minute', methods=['POST'])
+@rollback_on_error
 def create_notification():
-    """Crear nueva notificación masiva"""
     if request.method == 'POST':
-        title = request.form.get('title', '').strip()
-        message = request.form.get('message', '').strip()
-        if len(message) > 2000:
-            abort(400, description='Mensaje demasiado largo.')
-        notification_type = request.form.get('notification_type', 'all')
-        
-        if not title or not message:
-            flash('❌ El título y el mensaje son obligatorios.', 'danger')
-            return redirect(url_for('super_admin.create_notification'))
-        
-        notification = Notification(
-            title=title,
-            message=message,
-            notification_type=notification_type,
-            sent_by=current_user.id
-        )
-        db.session.add(notification)
-        db.session.flush()
-        
-        if notification_type == 'all':
-            recipients = User.query.filter_by(is_active=True).all()
-        elif notification_type == 'business':
-            recipients = User.query.filter_by(is_active=True, is_admin=True, is_super_admin=False).all()
-        elif notification_type == 'delivery':
-            recipients = User.query.filter_by(is_active=True, is_delivery=True).all()
-        elif notification_type == 'customer':
-            recipients = User.query.filter_by(is_active=True, is_admin=False, is_delivery=False, is_super_admin=False).all()
-        else:
-            recipients = []
-        
-        for user in recipients:
-            recipient = NotificationRecipient(
-                notification_id=notification.id,
-                user_id=user.id
-            )
-            db.session.add(recipient)
-        
-        notification.is_sent = True
-        db.session.commit()
-        
-        flash(f'✅ Notificación enviada a {len(recipients)} usuario(s).', 'success')
+        if request.args:
+            abort(400, description='Formulario inválido.')
+        notification, count = create_broadcast(request.form, current_user)
+        flash(f'Notificación enviada a {count} usuario(s).', 'success')
         return redirect(url_for('super_admin.notifications_list'))
-    
+
     return render_template('super_admin/create_notification.html')
 
 
@@ -2873,18 +2841,7 @@ def view_notification(notification_id):
 @main_bp.route('/mis-notificaciones')
 @login_required
 def my_notifications():
-    """Usuario ve sus notificaciones"""
-    recipients = NotificationRecipient.query.filter_by(user_id=current_user.id)\
-        .join(Notification)\
-        .order_by(Notification.created_at.desc()).all()
-    
-    for recipient in recipients:
-        if not recipient.is_read:
-            recipient.is_read = True
-            recipient.read_at = datetime.now(timezone.utc)
-    
-    db.session.commit()
-    
+    recipients = recipient_query(current_user).order_by(Notification.created_at.desc(), Notification.id.desc()).all()
     return render_template('user_notifications.html', recipients=recipients)
 
 
@@ -2892,20 +2849,26 @@ def my_notifications():
 @login_required
 def view_user_notification(notification_id):
     """Usuario lee una notificación específica"""
-    notification = Notification.query.get_or_404(notification_id)
-    
-    recipient = NotificationRecipient.query.filter_by(
-        notification_id=notification_id,
-        user_id=current_user.id
-    ).first()
-    
-    if not recipient:
-        flash('❌ No tienes permiso para ver esta notificación.', 'danger')
-        return redirect(url_for('main.my_notifications'))
-    
-    if not recipient.is_read:
-        recipient.is_read = True
-        recipient.read_at = datetime.now(timezone.utc)
-        db.session.commit()
-    
-    return render_template('view_notification_user.html', notification=notification)
+    recipient = recipient_query(current_user).filter(Notification.id == notification_id).first_or_404()
+    return render_template('view_notification_user.html', notification=recipient.notification, recipient=recipient)
+
+
+@main_bp.route('/notificacion/<int:notification_id>/read', methods=['POST'])
+@login_required
+def read_user_notification(notification_id):
+    recipient = recipient_query(current_user).filter(Notification.id == notification_id).first_or_404()
+    recipient.is_read = True
+    recipient.read_at = datetime.now(timezone.utc)
+    db.session.commit()
+    return redirect(url_for('main.view_user_notification', notification_id=notification_id))
+
+
+@main_bp.route('/api/notifications')
+@login_required
+def notifications_snapshot():
+    query = recipient_query(current_user)
+    records = query.order_by(Notification.id.desc()).limit(50).all()
+    response = jsonify(notifications=[{**notification_payload(r.notification, user_audience(current_user)), 'is_read': r.is_read} for r in records],
+                       unread_count=query.filter(NotificationRecipient.is_read.is_(False)).count())
+    response.headers['Cache-Control'] = 'no-store'
+    return response
