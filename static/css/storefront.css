@@ -31,3 +31,53 @@ body.storefront-modern .login-card:hover { transform: none; }
 @media (max-width: 359px) {
     body.storefront-modern .product-card .btn { font-size: .75rem; }
 }
+
+/* SAMA: recognizable QuickGo gold, with dark navigation and warm surfaces. */
+html body.storefront-modern { background: radial-gradient(ellipse at top left, #ecd89b65, transparent 58%), #f5f1e7 !important; }
+body.quickgo-shell .navbar { background: #20201d !important; border-bottom: 3px solid #c4a24a; box-shadow: 0 5px 22px #1c1a1820; }
+body.quickgo-shell .navbar-brand, body.quickgo-shell .nav-link,
+body.quickgo-shell .navbar .text-dark { color: #f9f6ec !important; }
+body.quickgo-shell .navbar .text-warning { color: #e0bd58 !important; }
+body.quickgo-shell .navbar .nav-link { font-size: .9rem; padding-inline: .55rem; }
+body.quickgo-shell .navbar .nav-link:hover { color: #e0bd58 !important; }
+body.quickgo-shell .navbar .btn-outline-dark { color: #f8efcf; border-color: #9a813e; }
+body.quickgo-shell .navbar .dropdown-menu .text-dark { color: #20201d !important; }
+body.quickgo-shell .navbar-toggler { background: #e6cc7f; border-color: #e6cc7f; }
+body.quickgo-shell .navbar .btn, body.storefront-modern .btn { min-height: 44px; }
+.quickgo-mark { display: inline-flex; align-items: center; justify-content: center; width: 39px; height: 39px; border-radius: 12px; margin-right: 10px; background: linear-gradient(135deg,#edce73,#bc9131); color: #24201a; box-shadow: 0 3px 10px #0003; }
+body.storefront-modern .card { border: 1px solid #d8c79b !important; box-shadow: 0 5px 20px #6e501511 !important; }
+body.storefront-modern .card-header { background: linear-gradient(110deg,#f0dfaf,#fbf6e7) !important; border-bottom-color: #dfcc96 !important; }
+body.storefront-modern .btn-warning, body.quickgo-shell .navbar .btn-warning { background: linear-gradient(135deg,#e0be62,#c5a044) !important; color: #242018 !important; border-color: #b48d35 !important; box-shadow: 0 2px 5px #6e501518; }
+body.storefront-modern .btn-warning:hover { background: #eccb71 !important; color: #171612 !important; }
+body.storefront-modern .btn-outline-warning { border-color: #b79545 !important; background: #fcf7e9 !important; color: #5d4519 !important; }
+body.storefront-modern .product-card .btn-outline-warning:hover { background: #ead49a !important; }
+body.storefront-modern .product-card .btn:disabled { opacity: .72; box-shadow: none; }
+body.storefront-modern .text-warning { color: #795714 !important; }
+body.storefront-modern .product-card .text-warning { font-size: 1.05rem; }
+body.storefront-modern .product-card .card-body { background: linear-gradient(#fff,#fffdf7) !important; }
+body.storefront-modern .business-name-badge { display: inline-block; background: #f0e1b9; color: #5b4316; font-size: .72rem; border-radius: 5px; padding: 3px 6px; margin-bottom: 7px; max-width: 100%; overflow-wrap: anywhere; }
+.product-name-link { color: inherit; text-decoration: none; }
+.product-name-link:hover { color: #89671b; text-decoration: underline; }
+.catalog-intro { padding: 12px 0 20px; }
+.quickgo-eyebrow { font-size: .7rem; font-weight: 700; letter-spacing: .14em; color: #80601b; }
+.catalog-intro h1 { font-size: clamp(1.7rem,3.2vw,2.65rem); font-weight: 750; letter-spacing: -.045em; margin: 9px 0; }
+.catalog-intro p { color: #6a6457; margin: 0; max-width: 650px; }
+.location-banner { background: radial-gradient(ellipse at right,#7b642b,#292923 72%); border: 1px solid #b89646; border-left: 5px solid #d3b05b; padding: 22px; border-radius: 16px; color: #fbf6e6; margin-bottom: 27px; box-shadow: 0 8px 22px #3c321419; }
+body.storefront-modern .location-banner h5 { color: #f3d78e !important; }
+.location-banner .business-badge { display: inline-block; border: 1px solid #ba9b524d; background: #fff8e816; color: #fff1c6; padding: 4px 9px; border-radius: 7px; margin: 3px 4px 0 0; font-size: .75rem; }
+.location-banner .alert { padding: 10px 12px; font-size: .82rem; }
+.catalog-toolbar h2 { font-size: clamp(1.3rem,2vw,1.65rem); }
+.catalog-search { width: min(100%,360px); }
+.catalog-search input { min-width: 0; }
+.quickgo-empty { max-width: 650px; margin: 22px auto; text-align: center; padding: 26px; background: linear-gradient(135deg,#efe0b7,#fffaf0); border: 1px solid #d8bc72; border-radius: 18px; }
+.quickgo-empty > .bi { color: #8f6c21; }
+.quickgo-empty p { max-width: 410px; margin: 8px auto 18px; color: #6a6253; }
+.audience-choice { border: 1px solid #ddcca0; background: #fbf6e9; border-radius: 10px; cursor: pointer; }
+.audience-choice:has(input:checked) { background: #eddaa5; border-color: #a17c28; }
+body.storefront-modern .form-check-input:checked { background-color: #9d7724; border-color: #9d7724; }
+body.storefront-modern .login-card { border-top: 4px solid #c2a04b !important; }
+body.storefront-modern footer { border-top: 3px solid #b59443; }
+.quickgo-notification-toast { position: fixed; bottom: 20px; right: 20px; width: min(360px,calc(100vw - 40px)); z-index: 1090; background: #25241f; color: #fff6dc; border: 1px solid #d4b363; border-radius: 14px; padding: 16px; box-shadow: 0 8px 30px #0003; }
+.quickgo-notification-toast a { color: #edcc73; }
+.quickgo-notification-toast, #notification-list, body.storefront-modern .message-content { overflow-wrap: anywhere; }
+@media (max-width: 575px) { .location-banner { padding: 17px; } .catalog-intro { padding-top: 0; } .catalog-intro p { font-size: .9rem; } .catalog-toolbar { align-items: stretch !important; } .catalog-search { width: 100%; } }
