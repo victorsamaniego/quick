@@ -136,7 +136,17 @@
             {% if messages %}
                 {% for category, message in messages %}
                     <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm border-0" role="alert">
-                        <span class="me-2">{{ '<i class="bi bi-exclamation-triangle" aria-hidden="true"></i>' if category == 'warning' else 'ℹ️' if category == 'info' else '<i class="bi bi-check-circle" aria-hidden="true"></i>' if category == 'success' else '❌' }}</span>
+                        <span class="me-2">
+                            {% if category == 'warning' %}
+                                <i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
+                            {% elif category == 'info' %}
+                                <i class="bi bi-info-circle" aria-hidden="true"></i>
+                            {% elif category == 'success' %}
+                                <i class="bi bi-check-circle" aria-hidden="true"></i>
+                            {% else %}
+                                <i class="bi bi-x-circle" aria-hidden="true"></i>
+                            {% endif %}
+                        </span>
                         <strong>{{ message }}</strong>
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>
