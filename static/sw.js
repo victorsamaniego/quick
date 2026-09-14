@@ -1,6 +1,6 @@
-const CACHE_NAME = 'quickgo-public-v4';
+const CACHE_NAME = 'quickgo-public-v5';
 // Explicit public assets only. Navigations and all private responses use the network.
-const urlsToCache = ['/static/css/style.css', '/static/js/main.js', '/static/css/storefront.css', '/static/css/themes.css', '/static/css/login.css', '/static/js/theme_settings.js', '/static/vendor/bootstrap-icons/bootstrap-icons.min.css', '/static/vendor/bootstrap-icons/fonts/bootstrap-icons.woff2', '/static/vendor/bootstrap-icons/fonts/bootstrap-icons.woff'];
+const urlsToCache = ['/static/css/style.css', '/static/js/main.js', '/static/css/storefront.css', '/static/css/themes.css', '/static/css/login.css', '/static/css/login_transition.css', '/static/js/login_transition.js', '/static/js/theme_settings.js', '/static/vendor/bootstrap-icons/bootstrap-icons.min.css', '/static/vendor/bootstrap-icons/fonts/bootstrap-icons.woff2', '/static/vendor/bootstrap-icons/fonts/bootstrap-icons.woff'];
 const publicURLs = new Set(urlsToCache.map(path => new URL(path, self.location.origin).href));
 const cacheable = response => response.ok && !response.redirected &&
     !/no-store|private/i.test(response.headers.get('Cache-Control') || '');

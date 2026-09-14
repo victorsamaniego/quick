@@ -80,7 +80,9 @@ class ThemeSettingsTest(unittest.TestCase):
         g.pop('_login_user',None)
         response=self.client.post('/login?next=/account/settings',data={'username':self.buyer.username,'password':password,'csrf_token':self.token('/login')})
         self.assertEqual(response.status_code,302,response.text)
-        self.assertTrue(response.location.endswith('/account/settings'))
+        self.assertTrue(response.location.endswith('/login/transition'))
+        transition = self.client.get(response.location)
+        self.assertIn('href="/account/settings"', transition.text)
         g.pop('_login_user',None)
         self.assertIn('qg-internal theme-black-gold',self.client.get('/account/settings').text)
 

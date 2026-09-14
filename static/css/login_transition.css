@@ -1,0 +1,33 @@
+:root { color-scheme:dark; }
+* { box-sizing:border-box; }
+body { margin:0; background:radial-gradient(ellipse at 25% 15%,#51401d 0,transparent 55%),#11120f; color:#f4d584; font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+.brand-transition { min-height:100vh; min-height:100svh; display:grid; place-items:center; padding:32px 16px; overflow:hidden; }
+.transition-logo { display:flex; align-items:baseline; justify-content:center; margin:0; font-size:clamp(48px,12vw,112px); line-height:1.15; font-weight:750; letter-spacing:-.065em; position:relative; }
+.transition-quick { display:inline-flex; }
+.transition-quick > span { display:inline-block; }
+.transition-go { display:inline-block; color:#fff0bd; transform-origin:50% 65%; }
+#transition-continue { position:fixed; bottom:max(32px,env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); display:inline-flex; align-items:center; gap:8px; min-height:44px; padding:10px 18px; color:#e7cc88; border:1px solid #87703b; border-radius:24px; font-size:14px; text-decoration:none; }
+#transition-continue:hover { background:#e7cc8815; }
+#transition-continue:focus-visible { outline:3px solid #f4d584; outline-offset:5px; }
+.transition-running .transition-quick > span { animation:quick-hop 400ms cubic-bezier(.2,.75,.25,1) both; }
+.transition-running .transition-quick > span:nth-child(1) { animation-delay:100ms; }
+.transition-running .transition-quick > span:nth-child(2) { animation-delay:180ms; }
+.transition-running .transition-quick > span:nth-child(3) { animation-delay:260ms; }
+.transition-running .transition-quick > span:nth-child(4) { animation-delay:340ms; }
+.transition-running .transition-quick > span:nth-child(5) { animation-delay:420ms; }
+.transition-running .transition-go { animation:go-flight 850ms 450ms cubic-bezier(.35,.05,.3,1) both; }
+.transition-running .transition-logo { animation:brand-settle 250ms 1300ms ease-out both; }
+@keyframes quick-hop { 0% { opacity:0; transform:translateY(.2em); } 65% { opacity:1; transform:translateY(-.045em); } 100% { opacity:1; transform:translateY(0); } }
+/* Transform-only curved flight: depart below, arc above Quick, curl into baseline. */
+@keyframes go-flight {
+  0% { opacity:0; transform:translate(-.3em,.6em) rotate(-28deg) scale(.72); }
+  18% { opacity:1; transform:translate(.42em,-.35em) rotate(-36deg) scale(.86); }
+  43% { transform:translate(-.85em,-1.05em) rotate(-13deg) scale(.9); }
+  65% { transform:translate(-1.7em,-.6em) rotate(18deg) scale(.94); }
+  83% { transform:translate(-.5em,.08em) rotate(8deg) scale(.98); }
+  100% { opacity:1; transform:translate(0,0) rotate(0) scale(1); }
+}
+@keyframes brand-settle { 0% { text-shadow:0 0 18px #e7bc5540; } 55% { text-shadow:0 0 26px #e7bc5560; } 100% { text-shadow:none; } }
+@media(prefers-reduced-motion:reduce) {
+  .transition-running .transition-quick > span,.transition-running .transition-go,.transition-running .transition-logo { animation:none; transform:none; }
+}
