@@ -1,4 +1,4 @@
-:root { color-scheme:dark; }
+:root { color-scheme:dark; --transition-duration:2700; }
 * { box-sizing:border-box; }
 body { margin:0; background:radial-gradient(ellipse at 25% 15%,#51401d 0,transparent 55%),#11120f; color:#f4d584; font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
 .brand-transition { min-height:100vh; min-height:100svh; display:grid; place-items:center; padding:32px 16px; overflow:hidden; }
@@ -15,16 +15,44 @@ body { margin:0; background:radial-gradient(ellipse at 25% 15%,#51401d 0,transpa
 .transition-running .transition-quick > span:nth-child(3) { animation-delay:260ms; }
 .transition-running .transition-quick > span:nth-child(4) { animation-delay:340ms; }
 .transition-running .transition-quick > span:nth-child(5) { animation-delay:420ms; }
-.transition-running .transition-go { animation:go-flight 850ms 450ms cubic-bezier(.35,.05,.3,1) both; }
-.transition-running .transition-logo { animation:brand-settle 250ms 1300ms ease-out both; }
+.transition-running .transition-go { animation:go-flight 1800ms 600ms linear both; }
+.transition-running .transition-logo { animation:brand-settle 250ms 2400ms ease-out both; }
 @keyframes quick-hop { 0% { opacity:0; transform:translateY(.2em); } 65% { opacity:1; transform:translateY(-.045em); } 100% { opacity:1; transform:translateY(0); } }
-/* Transform-only curved flight: depart below, arc above Quick, curl into baseline. */
+/* One broad orbit around Quick, followed by a gently decelerating docking arc. */
 @keyframes go-flight {
-  0% { opacity:0; transform:translate(-.3em,.6em) rotate(-28deg) scale(.72); }
-  18% { opacity:1; transform:translate(.42em,-.35em) rotate(-36deg) scale(.86); }
-  43% { transform:translate(-.85em,-1.05em) rotate(-13deg) scale(.9); }
-  65% { transform:translate(-1.7em,-.6em) rotate(18deg) scale(.94); }
-  83% { transform:translate(-.5em,.08em) rotate(8deg) scale(.98); }
+  0% { opacity:0.000; transform:translate(0.1959em,0.4002em) rotate(-3.045deg) scale(0.880); }
+  2.5% { opacity:0.250; transform:translate(0.3344em,0.2309em) rotate(-1.757deg) scale(0.882); }
+  5% { opacity:0.500; transform:translate(0.3966em,0.0527em) rotate(-0.401deg) scale(0.885); }
+  7.5% { opacity:0.750; transform:translate(0.3802em,-0.1275em) rotate(0.970deg) scale(0.887); }
+  10% { opacity:1.000; transform:translate(0.2858em,-0.3028em) rotate(2.304deg) scale(0.890); }
+  12.5% { opacity:1.000; transform:translate(0.1169em,-0.4665em) rotate(3.549deg) scale(0.892); }
+  15% { opacity:1.000; transform:translate(-0.1198em,-0.6122em) rotate(4.658deg) scale(0.895); }
+  17.5% { opacity:1.000; transform:translate(-0.4153em,-0.7344em) rotate(5.588deg) scale(0.897); }
+  20% { opacity:1.000; transform:translate(-0.7583em,-0.8284em) rotate(6.303deg) scale(0.900); }
+  22.5% { opacity:1.000; transform:translate(-1.1356em,-0.8906em) rotate(6.776deg) scale(0.902); }
+  25% { opacity:1.000; transform:translate(-1.5326em,-0.9185em) rotate(6.989deg) scale(0.905); }
+  27.5% { opacity:1.000; transform:translate(-1.9341em,-0.9111em) rotate(6.932deg) scale(0.907); }
+  30% { opacity:1.000; transform:translate(-2.3247em,-0.8687em) rotate(6.610deg) scale(0.910); }
+  32.5% { opacity:1.000; transform:translate(-2.6894em,-0.7930em) rotate(6.033deg) scale(0.912); }
+  35% { opacity:1.000; transform:translate(-3.0142em,-0.6867em) rotate(5.225deg) scale(0.915); }
+  37.5% { opacity:1.000; transform:translate(-3.2865em,-0.5541em) rotate(4.216deg) scale(0.917); }
+  40% { opacity:1.000; transform:translate(-3.4959em,-0.4002em) rotate(3.045deg) scale(0.920); }
+  42.5% { opacity:1.000; transform:translate(-3.6344em,-0.2309em) rotate(1.757deg) scale(0.922); }
+  45% { opacity:1.000; transform:translate(-3.6966em,-0.0527em) rotate(0.401deg) scale(0.925); }
+  47.5% { opacity:1.000; transform:translate(-3.6802em,0.1275em) rotate(-0.970deg) scale(0.927); }
+  50% { opacity:1.000; transform:translate(-3.5858em,0.3028em) rotate(-2.304deg) scale(0.930); }
+  52.5% { opacity:1.000; transform:translate(-3.4169em,0.4665em) rotate(-3.549deg) scale(0.932); }
+  55% { opacity:1.000; transform:translate(-3.1802em,0.6122em) rotate(-4.658deg) scale(0.935); }
+  57.5% { opacity:1.000; transform:translate(-2.8847em,0.7344em) rotate(-5.588deg) scale(0.938); }
+  60% { opacity:1.000; transform:translate(-2.5417em,0.8284em) rotate(-6.303deg) scale(0.940); }
+  62.5% { opacity:1.000; transform:translate(-2.1644em,0.8906em) rotate(-6.776deg) scale(0.943); }
+  65% { opacity:1.000; transform:translate(-1.7674em,0.9185em) rotate(-6.989deg) scale(0.945); }
+  67.5% { opacity:1.000; transform:translate(-1.3659em,0.9111em) rotate(-6.932deg) scale(0.948); }
+  70% { opacity:1.000; transform:translate(-0.9753em,0.8687em) rotate(-6.610deg) scale(0.950); }
+  72.5% { opacity:1.000; transform:translate(-0.6106em,0.7930em) rotate(-6.033deg) scale(0.953); }
+  75% { opacity:1.000; transform:translate(-0.2858em,0.6867em) rotate(-5.225deg) scale(0.955); }
+  77.5% { opacity:1.000; transform:translate(-0.0135em,0.5541em) rotate(-4.216deg) scale(0.958); }
+  80% { opacity:1.000; transform:translate(0.1959em,0.4002em) rotate(-3.045deg) scale(0.960); animation-timing-function:cubic-bezier(.16,1,.3,1); }
   100% { opacity:1; transform:translate(0,0) rotate(0) scale(1); }
 }
 @keyframes brand-settle { 0% { text-shadow:0 0 18px #e7bc5540; } 55% { text-shadow:0 0 26px #e7bc5560; } 100% { text-shadow:none; } }
