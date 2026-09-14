@@ -13,7 +13,12 @@
         window.location.replace(target.href);
     }
     document.body.classList.add('transition-running');
-    window.setTimeout(finish, !motion || motion.matches ? 100 : 1600);
+    // CSS owns the visual timeline; keep a bounded fallback if styles are unavailable.
+    const styledDuration = window.getComputedStyle
+        ? Number(window.getComputedStyle(document.body).getPropertyValue('--transition-duration')) : 0;
+    const duration = Number.isFinite(styledDuration) && styledDuration >= 1600 && styledDuration <= 2800
+        ? styledDuration : 1600;
+    window.setTimeout(finish, !motion || motion.matches ? 100 : duration);
     if (motion && motion.addEventListener) motion.addEventListener('change', event => {
         if (event.matches) finish();
     });
