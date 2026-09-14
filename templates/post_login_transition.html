@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#11120f">
+  <title>Bienvenido a QuickGo</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/login_transition.css') }}">
+  <script src="{{ url_for('static', filename='js/login_transition.js') }}" defer></script>
+</head>
+<body>
+  <main class="brand-transition" aria-label="Bienvenido a QuickGo">
+    <h1 class="transition-logo" aria-label="QuickGo">
+      <span class="transition-quick" aria-hidden="true"><span>Q</span><span>u</span><span>i</span><span>c</span><span>k</span></span><span class="transition-go" aria-hidden="true">Go</span>
+    </h1>
+    <a id="transition-continue" href="{{ target }}">Continuar<span aria-hidden="true"> →</span></a>
+  </main>
+</body>
+</html>

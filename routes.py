@@ -3,6 +3,7 @@ from security import is_safe_redirect_url, bounded_decimal, rollback_on_error
 from security import lock_user_role_change, validate_role_change, private_credential_response
 from security import validate_product_access
 from uuid import uuid4
+from urllib.parse import urlsplit, urlunsplit
 from themes import THEMES, normalize_theme
 from inventory import inventory_summary, inventory_money
 from notifications_service import create_broadcast, recipient_query, audience_label, payload as notification_payload, user_audience
@@ -318,12 +319,37 @@ def register():
     return render_template('register.html', form=form)
 
 
+def _login_destination(user):
+    # Keep the login's existing role precedence and default destinations.
+    if user.is_super_admin:
+        return url_for('super_admin.dashboard')
+    if user.is_admin:
+        return url_for('admin.dashboard')
+    if user.is_delivery:
+        return url_for('delivery.dashboard')
+    return url_for('main.dashboard')
+
+
+def _transition_target(value, user):
+    if not is_safe_redirect_url(value):
+        return _login_destination(user)
+    parsed = urlsplit(value)
+    # Same-origin absolute URLs accepted by the existing guard become local paths.
+    if parsed.path.rstrip('/') == url_for('main.login_transition'):
+        return _login_destination(user)
+    target = urlunsplit(('', '', parsed.path or '/', parsed.query, parsed.fragment))
+    # Stripping an origin must not turn a //path into a protocol-relative URL.
+    return target if is_safe_redirect_url(target) else _login_destination(user)
+
+
 @main_bp.route('/login', methods=['GET', 'POST'])
 @limiter.limit("5 per minute")
 def login():
     if current_user.is_authenticated:
         return redirect(url_for('main.dashboard'))
-    
+
+    if request.method == 'POST':
+        session.pop('post_login_transition', None)
     form = LoginForm()
     if form.validate_on_submit():
         identifier = form.username.data.strip()
@@ -341,22 +367,28 @@ def login():
             login_user(user, remember=form.remember_me.data and not privileged)
             flash(f' 👋 ¡Bienvenido de nuevo, {user.display_name}!', 'success')
             
-            next_page = request.args.get('next')
-            if not is_safe_redirect_url(next_page):
-                next_page = None
-            
-            if user.is_super_admin:
-                return redirect(next_page or url_for('super_admin.dashboard'))
-            elif user.is_admin:
-                return redirect(next_page or url_for('admin.dashboard'))
-            elif user.is_delivery:
-                return redirect(next_page or url_for('delivery.dashboard'))
-            else:
-                return redirect(next_page or url_for('main.dashboard'))
+            session['post_login_transition'] = {
+                'user_id': user.id,
+                'target': _transition_target(request.args.get('next'), user),
+            }
+            return redirect(url_for('main.login_transition'))
         else:
             flash('❌ Usuario/email o contraseña incorrectos.', 'danger')
     
     return render_template('login.html', form=form)
+
+
+@main_bp.route('/login/transition')
+@login_required
+def login_transition():
+    pending = session.pop('post_login_transition', None)
+    if not isinstance(pending, dict) or pending.get('user_id') != current_user.id:
+        return redirect(_login_destination(current_user))
+    target = _transition_target(pending.get('target'), current_user)
+    response = current_app.make_response(render_template('post_login_transition.html', target=target))
+    response.headers['Cache-Control'] = 'no-store, private'
+    response.headers['Referrer-Policy'] = 'no-referrer'
+    return response
 
 
 @main_bp.route('/logout', methods=['GET', 'POST'])
@@ -364,6 +396,7 @@ def login():
 def logout():
     if request.method == 'GET':
         return render_template('logout_confirm.html')
+    session.pop('post_login_transition', None)
     logout_user()
     flash('Sesion cerrada. Hasta pronto en QuickGo!', 'info')
     return redirect(url_for('main.index'))
