@@ -3,6 +3,8 @@
 
 {% block content %}
 <div class="container-fluid">
+    <button id="delivery-availability-location" type="button" class="btn btn-outline-secondary mb-2">📍 Actualizar mi ubicación para recibir solicitudes</button>
+    <p id="delivery-availability-status" class="small text-muted" role="status">La ubicación para buscar pedidos se actualiza solo cuando tocás este botón.</p>
     <!-- Header -->
     <div class="row mb-4">
         <div class="col-12">
@@ -82,6 +84,7 @@
                 </div>
                 
                 <div class="card-body">
+{% include '_tracking_action.html' %}
                     <!-- Información del Cliente -->
                     <div class="mb-3">
                         <h6 class="fw-bold mb-2">👤 Cliente:</h6>
@@ -279,19 +282,6 @@
     </div>
 
     </section>
-    <!-- Mapa de Ubicación -->
-    <div class="row mt-4">
-        <div class="col-12">
-            <div class="card border-0 shadow-sm">
-                <div class="card-header">
-                    <h5 class="fw-bold mb-0">🗺️ Tu Ubicación en Tiempo Real</h5>
-                </div>
-                <div class="card-body p-0">
-                    <div id="deliveryMap" style="height: 400px;"></div>
-                </div>
-            </div>
-        </div>
-    </div>
 </div>
 
 <!-- Estilos para botón deslizable -->
@@ -348,56 +338,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<!-- Mapa Leaflet -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-<script>
-// Inicializar mapa
-var map = L.map('deliveryMap').setView([-25.2637, -57.5759], 13);
-
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap'
-}).addTo(map);
-
-// Icono del delivery
-var deliveryIcon = L.icon({
-    iconUrl: 'https://cdn-icons-png.flaticon.com/512/713/713338.png',
-    iconSize: [40, 40],
-    iconAnchor: [20, 20]
-});
-
-var deliveryMarker = L.marker([-25.2637, -57.5759], {icon: deliveryIcon}).addTo(map);
-
-// Actualizar ubicación en tiempo real
-function updateLocation() {
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(function(position) {
-            var lat = position.coords.latitude;
-            var lng = position.coords.longitude;
-            
-            // Mover marcador
-            deliveryMarker.setLatLng([lat, lng]);
-            map.setView([lat, lng], 15);
-            
-            // Enviar al servidor
-            fetch('/delivery/api/location/update', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=\"csrf-token\"]')?.content || ''},
-                body: JSON.stringify({
-                    latitude: lat,
-                    longitude: lng
-                })
-            });
-        });
-    }
-}
-
-// Actualizar cada 5 segundos
-setInterval(updateLocation, 5000);
-updateLocation();
-</script>
-
+<script src="{{ url_for('static', filename='js/delivery_availability_location.js') }}"></script>
 <script>
 // Marcar como "Llegué"
 function markArrived(orderId) {
@@ -439,13 +380,7 @@ if (typeof window.socket !== 'undefined' && window.socket) {
         
         showNotification(data);
         
-        if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification('🚚 Nuevo Pedido - QuickGo', {
-                body: `Pedido #${data.order_id} - ${data.business_name} (${data.distance_km} km)`,
-                icon: '/static/icons/icon-192.png'
-            });
-        }
-        
+
 
     });
     
@@ -528,13 +463,5 @@ function showChatNotification(data) {
     }, 10000);
 }
 
-// Solicitar permiso para notificaciones del navegador al cargar
-document.addEventListener('DOMContentLoaded', function() {
-    if ('Notification' in window && Notification.permission === 'default') {
-        Notification.requestPermission().then(permission => {
-            console.log('🔔 Permiso de notificación:', permission);
-        });
-    }
-});
 </script>
 {% endblock %}

@@ -54,7 +54,7 @@
                     <tbody>
                         {% for order in orders %}
                         <tr>
-                            <td><strong>#{{ order.id }}</strong></td>
+                            <td><strong>#{{ order.id }}</strong><br>{% include '_tracking_action.html' %}</td>
                             <td>
                                 {{ order.customer.email }}<br>
                                 <small class="text-muted">{{ order.shipping_phone }}</small>

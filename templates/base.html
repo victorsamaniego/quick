@@ -168,6 +168,13 @@
         {% block content %}{% endblock %}
     </main>
     
+    {% if current_user.is_authenticated %}
+    <aside class="container mb-3" aria-label="Notificaciones del sistema">
+        <button id="push-enable" type="button" class="btn btn-outline-primary" disabled>🔔 Activar notificaciones</button>
+        <button id="push-disable" type="button" class="btn btn-outline-secondary" hidden>Desactivar notificaciones</button>
+        <p id="push-status" class="small text-muted mt-2" role="status"></p>
+    </aside>
+    {% endif %}
     <!-- Footer -->
     <footer class="bg-dark text-white py-4 mt-auto">
         <div class="container">
@@ -187,14 +194,15 @@
     <script src="{{ url_for('static', filename='js/notifications_audio.js') }}"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     {% if current_user.is_authenticated and not current_user.is_super_admin %}<script src="{{ url_for('static', filename='js/notifications.js') }}"></script>{% endif %}
+    {% if current_user.is_authenticated %}<script src="{{ url_for('static', filename='js/web_push.js') }}"></script>{% endif %}
     {% block extra_js %}{% endblock %}
     
     <!-- PWA Install Prompt -->
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function() {
-                navigator.serviceWorker.register('/static/sw.js').then(function(registration) {
-                    console.log('ServiceWorker registrado con éxito:', registration.scope);
+                navigator.serviceWorker.register('/sw.js', {scope: '/'}).then(function(registration) {
+                    navigator.serviceWorker.getRegistrations().then(items => items.forEach(item => { if (item.active?.scriptURL === location.origin + '/static/sw.js') item.unregister(); }));
                 }, function(err) { console.log('ServiceWorker falló:', err); });
             });
         }

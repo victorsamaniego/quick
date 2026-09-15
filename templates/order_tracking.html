@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}Seguir delivery · Pedido #{{ order.id }}{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">{% endblock %}
+{% block content %}
+<div class="container" style="max-width: 1040px;">
+    <a class="btn btn-outline-secondary" href="{{ url_for('delivery.dashboard') if current_user.is_delivery else (url_for('admin.manage_orders') if current_user.is_admin else url_for('main.dashboard')) }}">← Mis pedidos</a>
+    {% include '_tracking_panel.html' %}
+</div>
+{% endblock %}
+{% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="{{ url_for('static', filename='js/delivery_tracking.js') }}"></script>
+{% endblock %}

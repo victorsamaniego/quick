@@ -23,7 +23,7 @@
         seen.add(key);
         return true;
     }
-    const sound = type => window.QuickGoAudio?.play(type);
+    const sound = type => { if (!document.hidden) window.QuickGoAudio?.play(type); };
     function on(event, fn) {
         if (!listeners.has(event)) {
             listeners.set(event, new Set());
@@ -127,6 +127,7 @@
     on('new_order', refreshOrders);
     on('new_delivery_request', refreshOrders);
     on('order_status_update', data => {
+        if (data.status !== 'shipped') document.querySelectorAll('[data-tracking-link="' + Number(data.order_id) + '"]').forEach(link => link.remove());
         const badge = document.getElementById(`order-status-${data.order_id}`);
         if (badge) { badge.textContent = data.status_label; badge.className = `badge bg-${data.status_color}`; }
         refreshOrders();
