@@ -20,6 +20,7 @@ from math import radians, sin, cos, sqrt, atan2, isfinite
 from models import db, User, Product, Category, Order, OrderItem, Business, DeliveryRequest, ChatMessage, SecurityQuestion, SupportChat, DeliveryBusinessChat, UserMessage, Notification, NotificationRecipient
 from auth_tokens import schedule_recovery, consume_reset_token, GENERIC_RECOVERY_MESSAGE
 import delivery_candidates
+import web_push
 from forms import (
     RegistrationForm, LoginForm, PasswordResetForm,
     ProductForm, OrderForm, AdminUserForm, CategoryForm, BusinessCoverageForm, QuickGoldForm
@@ -33,6 +34,107 @@ main_bp = Blueprint('main', __name__)
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 delivery_bp = Blueprint('delivery', __name__, url_prefix='/delivery')
 super_admin_bp = Blueprint('super_admin', __name__, url_prefix='/super-admin')
+
+
+@main_bp.route('/orders/<int:order_id>/tracking')
+@login_required
+def order_tracking(order_id):
+    order = db.session.get(Order, order_id)
+    if not current_user.is_active or not can_access_order(current_user, order):
+        abort(403)
+    return render_template('order_tracking.html', order=order)
+
+
+@main_bp.route('/api/orders/<int:order_id>/tracking')
+@login_required
+def order_tracking_snapshot(order_id):
+    from delivery_tracking import tracking_snapshot
+    order = db.session.get(Order, order_id)
+    if not current_user.is_active or not can_access_order(current_user, order):
+        abort(403)
+    response = jsonify(tracking_snapshot(order, current_user))
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
+@main_bp.route('/api/push/config')
+@login_required
+def push_config():
+    ready = web_push.enabled()
+    return jsonify(enabled=ready, public_key=current_app.config.get('WEB_PUSH_VAPID_PUBLIC_KEY') if ready else None)
+
+
+def push_input():
+    if not current_user.is_active:
+        abort(403)
+    if request.content_length is None or request.content_length > 8192:
+        abort(413)
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        abort(400)
+    return data
+
+
+@main_bp.route('/api/push/subscribe', methods=['POST'])
+@login_required
+@limiter.limit('20 per minute')
+@rollback_on_error
+def push_subscribe():
+    data = push_input()
+    if not web_push.enabled():
+        return jsonify(error='Notificaciones no habilitadas'), 503
+    if not web_push.validate_subscription(data):
+        abort(400)
+    from sqlalchemy.exc import IntegrityError
+    key = web_push.endpoint_hash(data['endpoint'])
+    row = web_push.PushSubscription.query.filter_by(endpoint_hash=key).with_for_update().first()
+    if row is None:
+        if web_push.PushSubscription.query.filter_by(user_id=current_user.id).count() >= 20:
+            abort(409)
+        row = web_push.PushSubscription(endpoint_hash=key, endpoint=data['endpoint'], user_id=current_user.id,
+                                         p256dh=data['keys']['p256dh'], auth=data['keys']['auth'])
+        db.session.add(row)
+        try:
+            db.session.flush()
+        except IntegrityError:
+            db.session.rollback()
+            row = web_push.PushSubscription.query.filter_by(endpoint_hash=key).with_for_update().one()
+    # Same browser may sign in to a different account; require both capability keys.
+    if row.p256dh != data['keys']['p256dh'] or row.auth != data['keys']['auth']:
+        abort(409)
+    row.user_id = current_user.id
+    row.visible_at = None
+    db.session.commit()
+    response = jsonify(success=True, device=key)
+    response.set_cookie('quickgo_push_device', key, httponly=True, secure=current_app.config.get('SESSION_COOKIE_SECURE', False), samesite='Lax')
+    return response
+
+
+@main_bp.route('/api/push/unsubscribe', methods=['POST'])
+@login_required
+@limiter.limit('30 per minute')
+@rollback_on_error
+def push_unsubscribe():
+    data = push_input()
+    if set(data) != {'device'} or not isinstance(data['device'], str) or len(data['device']) != 64:
+        abort(400)
+    web_push.PushSubscription.query.filter_by(user_id=current_user.id, endpoint_hash=data['device']).delete()
+    db.session.commit()
+    return jsonify(success=True)
+
+
+@main_bp.route('/api/push/presence', methods=['POST'])
+@login_required
+@limiter.limit('120 per minute')
+@rollback_on_error
+def push_presence():
+    data = push_input()
+    if set(data) != {'device', 'visible'} or type(data['visible']) is not bool or not isinstance(data['device'], str) or len(data['device']) != 64:
+        abort(400)
+    row = web_push.PushSubscription.query.filter_by(user_id=current_user.id, endpoint_hash=data['device']).first_or_404()
+    row.visible_at = datetime.now(timezone.utc) if data['visible'] else None
+    db.session.commit()
+    return jsonify(success=True)
 
 
 @main_bp.app_context_processor
@@ -396,10 +498,21 @@ def login_transition():
 def logout():
     if request.method == 'GET':
         return render_template('logout_confirm.html')
+    device = request.cookies.get('quickgo_push_device')
+    if device and len(device) == 64:
+        from sqlalchemy.exc import SQLAlchemyError
+        try:
+            web_push.PushSubscription.query.filter_by(user_id=current_user.id, endpoint_hash=device).delete()
+            db.session.commit()
+        except SQLAlchemyError:
+            db.session.rollback()
+            current_app.logger.warning('Push subscription cleanup unavailable during logout.')
     session.pop('post_login_transition', None)
     logout_user()
     flash('Sesion cerrada. Hasta pronto en QuickGo!', 'info')
-    return redirect(url_for('main.index'))
+    response = redirect(url_for('main.index'))
+    response.delete_cookie('quickgo_push_device')
+    return response
 
 
 @main_bp.route('/dashboard')
@@ -1897,7 +2010,7 @@ def accept_delivery_request(request_id):
     if current_app.config.get('SECURITY_DELIVERY_CANDIDATES', False):
         delivery_request, order, changed = delivery_candidates.respond(request_id, current_user, True)
         if not changed:
-            return redirect(url_for('delivery.dashboard'))
+            return redirect(url_for('delivery.order_detail', order_id=order.id))
         old_status = 'pending'
     else:
         delivery_request = DeliveryRequest.query.filter_by(id=request_id).with_for_update().first_or_404()
@@ -1923,13 +2036,14 @@ def accept_delivery_request(request_id):
     }, rooms=[f'business_{delivery_request.business_id}'])
     
     publish('delivery_assigned', {
+        'event_id': uuid4().hex, 'delivery_driver_id': order.delivery_driver_id,
         'order_id': order.id,
         'driver_name': current_user.email,
         'driver_phone': current_user.phone
-    }, rooms=[f'user_{order.user_id}'])
+    }, rooms=order_rooms(order))
     
     flash('✅ Solicitud aceptada. ¡A retirar el pedido!', 'success')
-    return redirect(url_for('delivery.dashboard'))
+    return redirect(url_for('delivery.order_detail', order_id=order.id))
 
 
 @main_bp.route('/delivery-request/<int:request_id>/reject', methods=['POST'])

@@ -106,7 +106,7 @@ test('delivery listeners load after the shared socket and separately from map in
     const template = fs.readFileSync(require('node:path').join(__dirname, '../templates/delivery/dashboard.html'), 'utf8');
     const listener = template.indexOf("window.QuickRealtime.on('new_delivery_request'");
     assert.ok(template.indexOf('{% block extra_js %}') < listener);
-    assert.ok(template.indexOf('</script>', template.indexOf('updateLocation();')) < listener);
+    assert.doesNotMatch(template, /updateLocation\(\)|watchPosition/);
     const base = fs.readFileSync(require('node:path').join(__dirname, '../templates/base.html'), 'utf8');
     assert.ok(base.indexOf("filename='js/main.js'") < base.indexOf('{% block extra_js %}'));
     assert.doesNotMatch(base, /\bio\(\)/);
@@ -185,7 +185,7 @@ function dashboardHarness() {
     nodes['realtime-orders'] = node('realtime-orders', '', '', ['order-5']);
     let requests = 0, pending = 1;
     const document = {addEventListener(name, cb) {(gestures[name] ||= []).push(cb);},
-        getElementById(id) {return nodes[id] || null;}, querySelector() {return null;},
+        getElementById(id) {return nodes[id] || null;}, querySelector() {return null;}, querySelectorAll() {return [];},
         body: {appendChild(modal) {nodes[modal.id] = modal;}}};
     class DOMParser {
         parseFromString(html) {

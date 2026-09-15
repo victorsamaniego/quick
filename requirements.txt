@@ -17,3 +17,4 @@ python-dotenv==1.2.2
 cloudinary==1.41.0
 
 Pillow==12.3.0
+pywebpush==2.0.3

@@ -8,6 +8,7 @@ from auth_identity import matches_identity
 from flask_login import current_user
 from flask_socketio import SocketIO, join_room, leave_room
 from models import db, User, Order
+from delivery_tracking import save_location
 
 socketio = SocketIO()
 
@@ -52,6 +53,8 @@ def publish(event, payload, rooms):
 
     Socket.IO's room union delivers once to a socket present in several rooms.
     """
+    from web_push import enqueue
+    enqueue(event, payload, rooms)
     if 'socketio' not in current_app.extensions:
         return
     identities = current_app.extensions.get('realtime_identities', {})
@@ -182,15 +185,4 @@ def register_realtime(app):
     @socketio.on('delivery_location_update')
     @socket_budget('location', 240)
     def delivery_location(data):
-        if not isinstance(data, dict) or not isinstance(data.get('order_id'), int):
-            return
-        order = db.session.get(Order, data['order_id'])
-        if order and current_user.is_authenticated and current_user.is_delivery and order.delivery_driver_id == current_user.id:
-            try:
-                lat, lon = float(data['latitude']), float(data['longitude'])
-                if not (-90 <= lat <= 90 and -180 <= lon <= 180):
-                    return
-            except (KeyError, TypeError, ValueError):
-                return
-            publish('delivery_location_update', {'order_id': order.id, 'latitude': lat,
-                                                 'longitude': lon}, order_rooms(order))
+        return save_location(data, current_user)
