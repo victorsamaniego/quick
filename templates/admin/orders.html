@@ -56,7 +56,7 @@
                     <tbody>
                         {% for order in orders %}
                         <tr>
-                            <td><strong>#{{ order.id }}</strong></td>
+                            <td><strong>#{{ order.id }}</strong><br>{% include '_tracking_action.html' %}</td>
                             <td><small>{{ order.customer.email }}</small></td>
                             <td><strong>GS {{ "{:,.0f}".format(order.total_amount | default(0)) }}</strong></td>
                             <td>

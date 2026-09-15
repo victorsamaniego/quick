@@ -92,6 +92,7 @@
         </div>
     </div>
     
+    {% include '_tracking_panel.html' %}
     <!-- Chat con el Negocio -->
     <div class="row mb-4">
         <div class="col-12">
@@ -200,6 +201,7 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="{{ url_for('static', filename='js/delivery_tracking.js') }}"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="{{ url_for('static', filename='js/order_destination_map.js') }}"></script>
 {% if order.business and order.business.latitude and order.business.longitude %}

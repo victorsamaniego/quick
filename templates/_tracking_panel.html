@@ -1,0 +1,22 @@
+<section class="card shadow-sm my-3" data-delivery-tracking data-order-id="{{ order.id }}" aria-label="Seguimiento del delivery">
+    <div class="card-body">
+        <p class="small text-muted mb-2">PEDIDO #{{ order.id }}</p>
+        <h2 class="h4" data-tracking-heading>Tu pedido está en camino</h2>
+        <p data-tracking-state role="status" aria-live="polite">Esperando ubicación del delivery…</p>
+        <div data-tracking-map role="region" aria-label="Mapa de comercio, destino y delivery" style="height: min(52vh, 440px); min-height: 240px; width: 100%; z-index: 1; border-radius: 12px;"></div>
+        <div class="row g-3 mt-1">
+            <div class="col-12 col-md-4"><strong>🏪 {{ 'RECOGER EN' if current_user.is_delivery else 'Comercio' }}</strong><p class="mb-0">{{ order.business.name if order.business else 'No disponible' }}</p></div>
+            <div class="col-12 col-md-4"><strong>📍 {{ 'ENTREGAR EN' if current_user.is_delivery else 'Lugar de entrega' }}</strong><p class="mb-0">{{ order.shipping_address }}</p></div>
+            <div class="col-12 col-md-4"><strong>🛵 {{ 'MI UBICACIÓN' if current_user.is_delivery else 'Delivery' }}</strong><p class="mb-0" data-tracking-age>Esperando ubicación del delivery…</p></div>
+        </div>
+        {% if current_user.is_delivery %}
+        <p class="small text-muted mt-3">Mantené esta pantalla abierta durante el reparto. Al bloquear el teléfono o cambiar de aplicación, el sistema puede suspender la ubicación.</p>
+        <p class="small" data-gps-message role="status"></p>
+        <div class="d-flex flex-wrap gap-2 mt-3">
+            {% if order.business and order.business.latitude is not none and order.business.longitude is not none %}<a class="btn btn-outline-primary" href="https://www.google.com/maps/dir/?api=1&amp;destination={{ order.business.latitude }},{{ order.business.longitude }}" target="_blank" rel="noopener">Navegar al comercio</a>{% endif %}
+            {% if order.client_latitude is not none and order.client_longitude is not none %}<a class="btn btn-outline-primary" href="https://www.google.com/maps/dir/?api=1&amp;destination={{ order.client_latitude }},{{ order.client_longitude }}" target="_blank" rel="noopener">Navegar al cliente</a>{% endif %}
+            <a class="btn btn-outline-secondary" href="{{ url_for('delivery.order_detail', order_id=order.id) }}">Acciones del pedido</a>
+        </div>
+        {% endif %}
+    </div>
+</section>

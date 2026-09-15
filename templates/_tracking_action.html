@@ -1,0 +1,5 @@
+{% if order.tracking_active %}
+<a class="btn btn-warning my-2" data-tracking-link="{{ order.id }}" href="{{ url_for('main.order_tracking', order_id=order.id) }}">🛵 {{ 'Mi ubicación y recorrido' if current_user.is_delivery else ('Seguir delivery' if current_user.is_admin else 'Ver ubicación del delivery') }}</a>
+{% elif order.status == 'pending' %}
+<small class="d-block text-muted">{{ 'Delivery asignado' if order.delivery_driver_id else 'Preparando tu pedido' }}</small>
+{% endif %}

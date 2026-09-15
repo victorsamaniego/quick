@@ -204,7 +204,7 @@ class Business(db.Model):
     
     admin_user = db.relationship('User', back_populates='business', lazy=True, uselist=False)
     products = db.relationship('Product', back_populates='business', lazy=True, cascade='all, delete-orphan')
-    orders = db.relationship('Order', lazy=True)
+    orders = db.relationship('Order', back_populates='business', lazy=True)
     categories = db.relationship('Category', lazy=True)
     delivery_drivers = db.relationship('User', lazy=True,
                                       primaryjoin="and_(User.business_id==Business.id, User.is_delivery==True)",
@@ -383,6 +383,7 @@ class OrderItem(db.Model):
 
 class Order(db.Model):
     __tablename__ = 'orders'
+    business = db.relationship('Business', back_populates='orders')
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     business_id = db.Column(db.Integer, db.ForeignKey('businesses.id'), nullable=False, index=True)
@@ -405,6 +406,10 @@ class Order(db.Model):
     cash_bill_amount = db.Column(db.Float, default=0.0)
     needs_change = db.Column(db.Boolean, default=False)
     payment_receipt_url = db.Column(db.String(500), nullable=True)  # 🔥 CAMBIADO a 500
+
+    @property
+    def tracking_active(self):
+        return self.status == 'shipped' and self.delivery_driver_id is not None
     
     @property
     def items_list(self):

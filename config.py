@@ -6,6 +6,10 @@ load_dotenv()
 
 
 class Config:
+    WEB_PUSH_ENABLED = os.environ.get('WEB_PUSH_ENABLED', 'false').lower() == 'true'
+    WEB_PUSH_VAPID_PUBLIC_KEY = os.environ.get('WEB_PUSH_VAPID_PUBLIC_KEY')
+    WEB_PUSH_VAPID_PRIVATE_KEY = os.environ.get('WEB_PUSH_VAPID_PRIVATE_KEY')
+    WEB_PUSH_CONTACT = os.environ.get('WEB_PUSH_CONTACT')
     # Seguridad
     SECRET_KEY = os.environ.get("SECRET_KEY")
 
