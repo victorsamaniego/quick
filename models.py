@@ -215,7 +215,7 @@ class Business(db.Model):
         thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
         result = db.session.query(db.func.sum(Order.total_amount)).filter(
             Order.business_id == self.id,
-            Order.status == 'delivered',
+            Order.status.in_(['delivered', 'picked_up']),
             Order.created_at >= thirty_days_ago
         ).scalar()
         return result or 0
@@ -402,6 +402,7 @@ class Order(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     delivered_at = db.Column(db.DateTime)
+    picked_up_at = db.Column(db.DateTime(timezone=True))
     payment_method = db.Column(db.String(20), default='cash')
     cash_bill_amount = db.Column(db.Float, default=0.0)
     needs_change = db.Column(db.Boolean, default=False)
@@ -427,6 +428,7 @@ class Order(db.Model):
             'pending': '⏳ Pendiente',
             'shipped': '🚚 Enviado',
             'delivered': '✅ Entregado',
+            'picked_up': 'Retirado del local',
             'cancelled': '❌ Cancelado'
         }
         return labels.get(self.status, self.status)
@@ -437,6 +439,7 @@ class Order(db.Model):
             'pending': 'warning',
             'shipped': 'info',
             'delivered': 'success',
+            'picked_up': 'success',
             'cancelled': 'danger'
         }
         return colors.get(self.status, 'secondary')

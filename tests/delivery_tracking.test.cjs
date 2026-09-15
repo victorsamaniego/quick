@@ -70,3 +70,10 @@ test('late HTTP snapshot cannot resurrect completed tracking',async()=>{
     resolve({ok:true,status:200,json:async()=>({active:true,can_transmit:true,status:'shipped'})});await request;
     assert.equal(h.nodes['[data-tracking-state]'].textContent,'Pedido cancelado');assert.equal(h.stats.watches,1);
 });
+
+test('picked_up stops GPS and displays store pickup',async()=>{
+    const h=harness({transmit:true});await h.settle();
+    h.events.order_status_update({order_id:1,status:'picked_up'});
+    assert.equal(h.stats.clears,1);
+    assert.equal(h.nodes['[data-tracking-state]'].textContent,'Retirado del local');
+});

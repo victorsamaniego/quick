@@ -55,7 +55,7 @@
         }
         if (event === 'order_status_update' && data.event_id && data.order_id != null) {
             key = 'status:' + data.order_id + ':' + data.status;
-            if (data.status === 'delivered' && data.old_status !== data.status) type = 'completed';
+            if (['delivered', 'picked_up'].includes(data.status) && data.old_status !== data.status) type = 'completed';
             else if (driver) type = 'delivery';
         }
         if ((event === 'new_chat_message' || event === 'private_chat_message') && data.message?.sender_id != null && Number(data.message.sender_id) !== Number(user?.id)) type = 'message';
@@ -91,8 +91,8 @@
                 if (document.querySelector('.modal.show')) { dirty = true; break; }
                 document.getElementById('realtime-orders').replaceChildren(...fresh.childNodes);
                 for (const [current, replacement] of regions) current.replaceWith(replacement);
-                if (user?.isAdmin) {
-                    page.querySelectorAll('.modal[id]').forEach(modal => {
+                if (user) {
+                    page.querySelectorAll(user.isAdmin ? '.modal[id]' : '.modal[id^="orderModal"]').forEach(modal => {
                         const old = document.getElementById(modal.id);
                         if (old) old.replaceWith(modal); else document.body.appendChild(modal);
                     });

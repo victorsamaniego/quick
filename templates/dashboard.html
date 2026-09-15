@@ -441,6 +441,12 @@
                     </table>
                 </div>
                 
+                {% if order.status == 'picked_up' %}
+                <div class="alert alert-success mt-3">
+                    <strong>Retirado del local:</strong>
+                    {{ order.picked_up_at.strftime('%d/%m/%Y %H:%M') if order.picked_up_at else 'N/A' }} UTC
+                </div>
+                {% endif %}
                 {% if order.status == 'delivered' %}
                 <div class="alert alert-success mt-3 mb-0">
                     <i class="bi bi-check-circle"></i> <strong>Pedido Entregado:</strong> 
@@ -483,8 +489,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 showNotification(
                     '📦 Pedido Actualizado',
-                    `Tu pedido #${data.order_id} ahora está: ${data.new_status}`,
-                    data.new_status === 'delivered' ? 'success' : 'info'
+                    `Tu pedido #${data.order_id} ahora está: ${data.status_label || data.new_status}`,
+                    ['delivered', 'picked_up'].includes(data.new_status) ? 'success' : 'info'
                 );
                 
 

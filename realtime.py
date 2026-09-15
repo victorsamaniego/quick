@@ -54,8 +54,8 @@ def publish(event, payload, rooms):
     Socket.IO's room union delivers once to a socket present in several rooms.
     """
     from web_push import enqueue
-    enqueue(event, payload, rooms)
     if 'socketio' not in current_app.extensions:
+        enqueue(event, payload, rooms)
         return
     identities = current_app.extensions.get('realtime_identities', {})
     for room in rooms:
@@ -69,6 +69,7 @@ def publish(event, payload, rooms):
         socketio.emit(event, {**payload, 'emitted_at': time.time()}, to=rooms)
     except Exception:
         current_app.logger.exception('Realtime emission failed after persistence: %s', event)
+    enqueue(event, payload, rooms)
 
 
 def publish_business_status(business):

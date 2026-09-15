@@ -11,7 +11,7 @@ def analytics_queries():
         func.coalesce(func.sum(Order.total_amount), 0).label('revenue')
     ).outerjoin(Order, (Business.id == Order.business_id)
                 & (Order.created_at >= now - timedelta(days=30))
-                & (Order.status == 'delivered'))\
+                & (Order.status.in_(['delivered', 'picked_up'])))\
         .group_by(Business.id, Business.name).order_by(func.sum(Order.total_amount).desc())
     daily = db.session.query(func.date(Order.created_at).label('date'),
                              func.count(Order.id).label('order_count'))\
@@ -24,7 +24,7 @@ def analytics_queries():
     ).join(OrderItem, Product.id == OrderItem.product_id)\
         .join(Order, (OrderItem.order_id == Order.id) & (Order.business_id == Product.business_id))\
         .join(Business, Product.business_id == Business.id)\
-        .filter(Order.status == 'delivered')\
+        .filter(Order.status.in_(['delivered', 'picked_up']))\
         .group_by(Product.id, Product.name, Business.id, Business.name)\
         .order_by(func.sum(OrderItem.quantity).desc()).limit(10)
     statuses = db.session.query(Order.status, func.count(Order.id).label('order_count'))\
@@ -38,6 +38,6 @@ def analytics_data():
         revenue_by_business=[dict(row._mapping) for row in revenue.all()],
         orders_by_day=[{'date': str(row.date), 'order_count': row.order_count} for row in daily.all()],
         top_products=[dict(row._mapping) for row in products.all()],
-        order_statuses=[{'status': row.status or 'Sin estado', 'order_count': row.order_count} for row in statuses.all()],
+        order_statuses=[{'status': row.status or 'Sin estado', 'status_label': Order(status=row.status).status_label or 'Sin estado', 'order_count': row.order_count} for row in statuses.all()],
         active_business_count=Business.query.filter_by(is_active=True).count(),
     )

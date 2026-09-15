@@ -1365,7 +1365,7 @@ def dashboard():
     from sqlalchemy import func
     
     total_users = User.query.filter_by(business_id=business_id).count()
-    total_sales = db.session.query(db.func.sum(Order.total_amount)).filter_by(business_id=business_id, status='delivered').scalar() or 0
+    total_sales = db.session.query(db.func.sum(Order.total_amount)).filter(Order.business_id == business_id, Order.status.in_(['delivered', 'picked_up'])).scalar() or 0
     total_orders = Order.query.filter_by(business_id=business_id).count()
     pending_orders = Order.query.filter_by(business_id=business_id, status='pending').count()
     
@@ -1374,7 +1374,7 @@ def dashboard():
         func.sum(OrderItem.quantity).label('total_sold')
     ).join(OrderItem, Product.id == OrderItem.product_id)\
      .join(Order, OrderItem.order_id == Order.id)\
-     .filter(Order.business_id == business_id, Order.status == 'delivered')\
+     .filter(Order.business_id == business_id, Order.status.in_(['delivered', 'picked_up']))\
      .group_by(Product.id)\
      .order_by(func.sum(OrderItem.quantity).desc())\
      .first()
@@ -1385,7 +1385,7 @@ def dashboard():
         User.email,
         func.count(Order.id).label('order_count')
     ).join(Order, User.id == Order.user_id)\
-     .filter(Order.business_id == business_id, Order.status == 'delivered')\
+     .filter(Order.business_id == business_id, Order.status.in_(['delivered', 'picked_up']))\
      .group_by(User.id)\
      .order_by(func.count(Order.id).desc())\
      .first()
@@ -1409,7 +1409,7 @@ def dashboard():
     ).join(Product, Category.id == Product.category_id)\
      .join(OrderItem, Product.id == OrderItem.product_id)\
      .join(Order, OrderItem.order_id == Order.id)\
-     .filter(Order.business_id == business_id, Order.created_at >= thirty_days_ago, Order.status == 'delivered')\
+     .filter(Order.business_id == business_id, Order.created_at >= thirty_days_ago, Order.status.in_(['delivered', 'picked_up']))\
      .group_by(Category.id)\
      .all()
     
@@ -1427,7 +1427,7 @@ def dashboard():
     daily_sales_query = db.session.query(
         db.func.date(Order.created_at).label('date'),
         func.sum(Order.total_amount).label('total')
-    ).filter(Order.business_id == business_id, Order.created_at >= seven_days_ago, Order.status == 'delivered')\
+    ).filter(Order.business_id == business_id, Order.created_at >= seven_days_ago, Order.status.in_(['delivered', 'picked_up']))\
      .group_by(db.func.date(Order.created_at))\
      .order_by(db.func.date(Order.created_at))\
      .all()
@@ -1736,6 +1736,8 @@ def update_order_status(order_id):
     if order.business_id != current_user.business_id:
         flash('No podes actualizar pedidos de otros negocios.', 'danger')
         return redirect(url_for('admin.manage_orders'))
+    if order.status == 'picked_up':
+        return jsonify({'error': 'Este pedido ya fue retirado del local.'}), 409
     
     new_status = request.form.get('status')
     delivery_driver_id = request.form.get('delivery_driver_id', type=int)
@@ -1761,6 +1763,29 @@ def update_order_status(order_id):
         flash('Estado invalido.', 'danger')
     
     return redirect(url_for('admin.manage_orders'))
+
+
+@admin_bp.route('/orders/<int:order_id>/pick-up', methods=['POST'])
+@login_required
+@business_admin_required
+@subscription_required
+@rollback_on_error
+def pick_up_order(order_id):
+    order = Order.query.filter_by(id=order_id).populate_existing().with_for_update().first_or_404()
+    if order.business_id != current_user.business_id:
+        return jsonify({'error': 'No tenés permiso para este pedido.'}), 403
+    if order.status != 'pending' or order.delivery_driver_id is not None:
+        return jsonify({'error': 'Solo se puede retirar un pedido pendiente sin delivery asignado.'}), 409
+    # Do not silently revoke a dispatch that drivers may still be answering.
+    requests = DeliveryRequest.query.filter_by(order_id=order.id, status='pending').all()
+    if any(not dispatch.is_expired() for dispatch in requests):
+        return jsonify({'error': 'Hay una búsqueda de delivery vigente. Esperá a que expire antes de registrar el retiro.'}), 409
+    order.status = 'picked_up'
+    order.picked_up_at = datetime.now(timezone.utc)
+    db.session.commit()
+    publish_status(order, 'pending')
+    return jsonify({'success': True, 'order_id': order.id, 'status': order.status,
+                    'status_label': order.status_label})
 
 
 @admin_bp.route('/api/orders/<int:order_id>/location')
@@ -1858,7 +1883,7 @@ def api_pedido_datos(order_id):
 @business_admin_required
 @rollback_on_error
 def request_delivery(order_id):
-    order = Order.query.get_or_404(order_id)
+    order = Order.query.filter_by(id=order_id).populate_existing().with_for_update().first_or_404()
     
     if order.business_id != current_user.business_id:
         flash('No tenés permiso para este pedido.', 'danger')
@@ -2013,8 +2038,9 @@ def accept_delivery_request(request_id):
             return redirect(url_for('delivery.order_detail', order_id=order.id))
         old_status = 'pending'
     else:
-        delivery_request = DeliveryRequest.query.filter_by(id=request_id).with_for_update().first_or_404()
-        Order.query.filter_by(id=delivery_request.order_id).with_for_update().first_or_404()
+        reference = DeliveryRequest.query.get_or_404(request_id)
+        Order.query.filter_by(id=reference.order_id).populate_existing().with_for_update().first_or_404()
+        delivery_request = DeliveryRequest.query.filter_by(id=request_id).populate_existing().with_for_update().first_or_404()
         if not eligible_delivery(current_user, delivery_request):
             return jsonify({'error': 'No autorizado o solicitud expirada'}), 403
         delivery_request.driver_id = current_user.id
@@ -2111,7 +2137,7 @@ def chat_history(order_id):
 def send_chat_message(order_id):
     order = Order.query.get_or_404(order_id)
     
-    if order.status in ['delivered', 'cancelled']:
+    if order.status in ['delivered', 'picked_up', 'cancelled']:
         return jsonify({'error': 'Este pedido está cerrado. No se pueden enviar mensajes.'}), 403
     
     if not can_access_order(current_user, order):
@@ -2298,6 +2324,9 @@ def mark_delivered(order_id):
         flash('No autorizado.', 'danger')
         return redirect(url_for('delivery.dashboard'))
     
+    if order.status == 'picked_up':
+        return jsonify({'error': 'Este pedido ya fue retirado del local.'}), 409
+
     order.status = 'delivered'
     order.delivered_at = datetime.now(timezone.utc)
     db.session.commit()
@@ -2395,7 +2424,7 @@ def dashboard():
     total_deliveries = User.query.filter_by(is_delivery=True).count()
     total_products = Product.query.filter_by(is_active=True).count()
     total_orders = Order.query.count()
-    total_revenue = db.session.query(db.func.sum(Order.total_amount)).filter_by(status='delivered').scalar() or 0
+    total_revenue = db.session.query(db.func.sum(Order.total_amount)).filter(Order.status.in_(['delivered', 'picked_up'])).scalar() or 0
     
     from sqlalchemy import func
     thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
@@ -2407,7 +2436,7 @@ def dashboard():
         db.func.sum(Order.total_amount).label('revenue'),
         db.func.count(Order.id).label('orders')
     ).join(Order, Business.id == Order.business_id)\
-     .filter(Order.created_at >= thirty_days_ago, Order.status == 'delivered')\
+     .filter(Order.created_at >= thirty_days_ago, Order.status.in_(['delivered', 'picked_up']))\
      .group_by(Business.id)\
      .order_by(db.func.sum(Order.total_amount).desc())\
      .limit(10).all()
@@ -2625,7 +2654,7 @@ def view_business(business_id):
     
     business_products = Product.query.filter_by(business_id=business.id, is_active=True).count()
     business_orders = Order.query.filter_by(business_id=business.id).count()
-    business_revenue = db.session.query(db.func.sum(Order.total_amount)).filter_by(business_id=business.id, status='delivered').scalar() or 0
+    business_revenue = db.session.query(db.func.sum(Order.total_amount)).filter(Order.business_id == business.id, Order.status.in_(['delivered', 'picked_up'])).scalar() or 0
     business_customers = db.session.query(db.func.count(db.distinct(Order.user_id))).filter_by(business_id=business.id).scalar() or 0
     
     recent_orders = Order.query.filter_by(business_id=business.id).order_by(Order.created_at.desc()).limit(10).all()

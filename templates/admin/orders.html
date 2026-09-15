@@ -31,6 +31,8 @@
                    class="btn btn-{{ 'warning' if current_status == 'delivered' else 'outline-secondary' }}">
                     Entregados
                 </a>
+                <a href="{{ url_for('admin.manage_orders', status='picked_up') }}"
+                   class="btn btn-{{ 'warning' if current_status == 'picked_up' else 'outline-secondary' }}">Retirados</a>
             </div>
         </div>
     </div>
@@ -101,6 +103,12 @@
                                         👁️
                                     </button>
                                     
+                                    {% if order.status == 'pending' and not order.delivery_driver_id %}
+                                    <form method="POST" action="{{ url_for('admin.pick_up_order', order_id=order.id) }}" data-store-pickup>
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-outline-warning btn-sm">Retirado del local</button>
+                                    </form>
+                                    {% endif %}
                                     <!-- 🔥 NUEVO BOTÓN: VER UBICACIÓN EN MAPA -->
                                     {% if order.client_latitude and order.client_longitude %}
                                     <a href="{{ url_for('admin.ver_ubicacion_pedido', order_id=order.id) }}" 
@@ -123,7 +131,7 @@
                                     </a>
                                     {% endif %}
                                     
-                                    {% if order.status != 'delivered' and order.status != 'cancelled' %}
+                                    {% if order.status not in ['delivered', 'picked_up', 'cancelled'] %}
                                     <button type="button" class="btn btn-warning btn-sm" 
                                             data-bs-toggle="modal" 
                                             data-bs-target="#updateModal{{ order.id }}"
@@ -244,6 +252,12 @@
                     </table>
                 </div>
                 
+                {% if order.status == 'picked_up' %}
+                <div class="alert alert-success mt-3">
+                    <strong>Retirado del local:</strong>
+                    {{ order.picked_up_at.strftime('%d/%m/%Y %H:%M') if order.picked_up_at else 'N/A' }} UTC
+                </div>
+                {% endif %}
                 {% if order.status == 'delivered' %}
                 <div class="alert alert-success mt-3">
                     <i class="bi bi-check-circle"></i> <strong>Entregado:</strong> 
@@ -252,7 +266,7 @@
                 {% endif %}
             </div>
             <div class="modal-footer">
-                {% if order.status != 'delivered' and order.status != 'cancelled' %}
+                {% if order.status not in ['delivered', 'picked_up', 'cancelled'] %}
                 <button type="button" class="btn btn-warning" 
                         data-bs-dismiss="modal" 
                         data-bs-toggle="modal" 
@@ -274,7 +288,7 @@
 </div>
 
 <!-- Modal Actualizar -->
-{% if order.status != 'delivered' and order.status != 'cancelled' %}
+{% if order.status not in ['delivered', 'picked_up', 'cancelled'] %}
 <div class="modal fade" id="updateModal{{ order.id }}" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -335,6 +349,7 @@
 {% endif %}
 {% endfor %}
 
+<script src="{{ url_for('static', filename='js/order_pickup.js') }}"></script>
 <script>
 function toggleDeliverySelector(orderId) {
     const statusSelect = document.getElementById('statusSelect' + orderId);
@@ -351,7 +366,7 @@ function toggleDeliverySelector(orderId) {
 
 document.addEventListener('DOMContentLoaded', function() {
     {% for order in orders %}
-    {% if order.status != 'delivered' and order.status != 'cancelled' %}
+    {% if order.status not in ['delivered', 'picked_up', 'cancelled'] %}
     toggleDeliverySelector({{ order.id }});
     {% endif %}
     {% endfor %}
