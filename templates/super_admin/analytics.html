@@ -399,7 +399,7 @@ const statusCtx = document.getElementById('orderStatusChart').getContext('2d');
 new Chart(statusCtx, {
     type: 'pie',
     data: {
-        labels: {{ order_statuses|map(attribute='status')|list|tojson }},
+        labels: {{ order_statuses|map(attribute='status_label')|list|tojson }},
         datasets: [{
             data: {{ order_statuses|map(attribute='order_count')|list|tojson }},
             backgroundColor: [

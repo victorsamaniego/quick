@@ -67,7 +67,7 @@
         }
         function inactive(status) {
             active = authorized = false; stop();
-            const text = status === 'delivered' ? 'Pedido entregado' : status === 'cancelled' ? 'Pedido cancelado' : 'Reparto no activo';
+            const text = status === 'picked_up' ? 'Retirado del local' : status === 'delivered' ? 'Pedido entregado' : status === 'cancelled' ? 'Pedido cancelado' : 'Reparto no activo';
             heading.textContent = state.textContent = text;
             age.textContent = 'Ubicación en vivo finalizada';
         }

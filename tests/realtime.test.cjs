@@ -295,3 +295,26 @@ test('notification HTTP recovery seeds dedup and never replays sound on reconnec
     h.emit('superadmin_notification',{notification_id:410,audience:'business'});
     assert.equal(h.counters.sounds,0);
 });
+
+test('store pickup uses existing completion sound once', async () => {
+    const h = harness(); await h.unlock();
+    const data = {event_id:'pickup-1',order_id:9,old_status:'pending',status:'picked_up'};
+    h.emit('order_status_update', data); h.emit('order_status_update', data);
+    assert.equal(h.counters.types.filter(type=>type==='completed').length,1);
+});
+
+test('buyer order detail receives refreshed pickup state without navigation', async () => {
+    let replacement, selector;
+    const fragment = {replaceChildren() {}};
+    const old = {replaceWith(node) { replacement = node; }};
+    const document = {addEventListener() {}, querySelector() { return null; },
+        getElementById(id) { return id === 'realtime-orders' ? fragment : id === 'orderModal9' ? old : null; }};
+    const modal = {id:'orderModal9', textContent:'Retirado del local'};
+    class DOMParser { parseFromString() { return {getElementById() {return {childNodes:[]};},
+        querySelectorAll(value) {selector=value;return [modal];}}; } }
+    const h = harness({user:{isAdmin:false},document,DOMParser,fetch:async()=>({ok:true,text:async()=>''})});
+    h.window.location = {href:'/dashboard'};
+    await h.window.QuickRealtime.refreshOrders();
+    assert.equal(selector,'.modal[id^="orderModal"]');
+    assert.equal(replacement.textContent,'Retirado del local');
+});

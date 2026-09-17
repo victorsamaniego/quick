@@ -93,10 +93,10 @@ def push_payload(event, payload, user):
         url = url_for('main.order_tracking', order_id=order_id)
     title = EVENTS[event]
     if event == 'order_status_update':
-        title = {'shipped': 'Tu pedido está en camino', 'delivered': 'Pedido entregado', 'cancelled': 'Pedido cancelado'}.get(payload.get('status'), title)
+        title = {'shipped': 'Tu pedido está en camino', 'delivered': 'Pedido entregado', 'picked_up': 'Pedido retirado', 'cancelled': 'Pedido cancelado'}.get(payload.get('status'), title)
     identity = payload.get('event_id') or f"{event}:{payload.get('channel', '')}:{payload.get('notification_id') or payload.get('request_id') or payload.get('message', {}).get('id') or order_id}"
     # No customer address, GPS or message text on a locked/shared device.
-    return {'event_id': str(identity), 'title': title, 'body': 'Abrí QuickGo para ver los detalles.', 'url': url, 'user_id': user.id}
+    return {'event_id': str(identity), 'title': title, 'body': (f'Tu pedido #{order_id} fue registrado como retirado del local.' if event == 'order_status_update' and payload.get('status') == 'picked_up' else 'Abrí QuickGo para ver los detalles.'), 'url': url, 'user_id': user.id}
 
 
 class PushHTTPSession(Session):

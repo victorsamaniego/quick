@@ -77,7 +77,7 @@
 
 
             <!-- Chat cerrado -->
-            {% if order.status in ['delivered', 'cancelled'] %}
+            {% if order.status in ['delivered', 'picked_up', 'cancelled'] %}
             <div class="alert alert-secondary mb-3">
                 <i class="bi bi-info-circle"></i>
                 <strong>Chat Cerrado</strong><br>
@@ -224,7 +224,7 @@
 
 
                     <!-- FORMULARIO DE ENVÍO -->
-                    {% if order.status not in ['delivered', 'cancelled'] %}
+                    {% if order.status not in ['delivered', 'picked_up', 'cancelled'] %}
 
                     <div class="p-3 border-top bg-white">
 
@@ -299,7 +299,7 @@ const orderId = {{ order.id | tojson }};
 const currentUserId = {{ current_user.id | tojson }};
 const orderUserId = {{ order.user_id | tojson }};
 const orderDeliveryId = {{ order.delivery_driver_id | tojson }};
-const isChatClosed = {{ (order.status in ['delivered', 'cancelled']) | tojson }};
+const isChatClosed = {{ (order.status in ['delivered', 'picked_up', 'cancelled']) | tojson }};
 
 
 /* =========================================================
