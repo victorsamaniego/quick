@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Historial de Cierres de Caja - QuickGo{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+        <div>
+            <h2 class="fw-bold mb-1"><i class="bi bi-clock-history text-warning"></i> Historial de Cierres de Caja</h2>
+            <p class="text-muted mb-0">Registro histórico e inmutable de todas las sesiones de caja cerradas</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('admin.cash_register') }}" class="btn btn-warning fw-semibold">
+                <i class="bi bi-cash-stack"></i> Ir a Caja Actual
+            </a>
+            <a href="{{ url_for('admin.dashboard') }}" class="btn btn-outline-dark">
+                <i class="bi bi-arrow-left"></i> Volver al Panel
+            </a>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>#</th>
+                            <th>Apertura</th>
+                            <th>Cierre</th>
+                            <th class="text-end">Fondo Inicial</th>
+                            <th class="text-end">Total Ventas</th>
+                            <th class="text-end">Efectivo Ventas</th>
+                            <th class="text-end">QR / Transf.</th>
+                            <th class="text-end">Esperado</th>
+                            <th class="text-end">Declarado</th>
+                            <th class="text-center">Resultado</th>
+                            <th class="text-end">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if sessions %}
+                            {% for s in sessions %}
+                            <tr>
+                                <td><strong>#{{ s.id }}</strong></td>
+                                <td>
+                                    <span class="d-block">{{ s.opened_at_formatted }}</span>
+                                    <small class="text-muted">{{ s.opened_by.username or s.opened_by.email }}</small>
+                                </td>
+                                <td>
+                                    <span class="d-block">{{ s.closed_at_formatted }}</span>
+                                    <small class="text-muted">{{ s.closed_by.username or s.closed_by.email if s.closed_by else 'N/A' }}</small>
+                                </td>
+                                <td class="text-end">GS {{ "{:,.2f}".format(s.opening_amount) }}</td>
+                                <td class="text-end fw-bold text-success">GS {{ "{:,.2f}".format(s.total_sales or 0) }}</td>
+                                <td class="text-end text-dark">GS {{ "{:,.2f}".format(s.cash_sales_total or 0) }}</td>
+                                <td class="text-end text-muted small">
+                                    QR: {{ "{:,.0f}".format(s.qr_sales_total or 0) }}<br>
+                                    Transf: {{ "{:,.0f}".format(s.transfer_sales_total or 0) }}
+                                </td>
+                                <td class="text-end fw-bold">GS {{ "{:,.2f}".format(s.expected_cash_at_close or 0) }}</td>
+                                <td class="text-end fw-bold">GS {{ "{:,.2f}".format(s.declared_cash or 0) }}</td>
+                                <td class="text-center">
+                                    <span class="badge bg-{{ s.difference_badge_color }} px-2 py-1">
+                                        {{ s.difference_label }}
+                                        {% if s.difference_at_close is not none and s.difference_at_close != 0 %}
+                                            <br>({{ "+" if s.difference_at_close > 0 else "" }}{{ "{:,.2f}".format(s.difference_at_close) }})
+                                        {% endif %}
+                                    </span>
+                                </td>
+                                <td class="text-end">
+                                    <a href="{{ url_for('admin.cash_register_session_detail', session_id=s.id) }}" class="btn btn-sm btn-outline-dark">
+                                        <i class="bi bi-eye"></i> Detalle
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="11" class="text-center py-5 text-muted">
+                                    <i class="bi bi-inbox fs-2 d-block mb-2 text-secondary"></i>
+                                    No hay sesiones de caja cerradas registradas para este negocio.
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -16,8 +16,13 @@ import os
 import secrets
 import cloudinary.uploader
 from functools import wraps
+from decimal import Decimal
 from math import radians, sin, cos, sqrt, atan2, isfinite
-from models import db, User, Product, Category, Order, OrderItem, Business, DeliveryRequest, ChatMessage, SecurityQuestion, SupportChat, DeliveryBusinessChat, UserMessage, Notification, NotificationRecipient
+from models import db, User, Product, Category, Order, OrderItem, Business, DeliveryRequest, ChatMessage, SecurityQuestion, SupportChat, DeliveryBusinessChat, UserMessage, Notification, NotificationRecipient, CashSession, CashMovement
+from cash_register_service import (
+    to_decimal, get_open_session, get_session_orders,
+    calculate_session_summary, close_cash_session
+)
 from auth_tokens import schedule_recovery, consume_reset_token, GENERIC_RECOVERY_MESSAGE
 import delivery_candidates
 import web_push
@@ -203,26 +208,43 @@ def subscription_required(f):
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated:
             return f(*args, **kwargs)
-        
+
         if current_user.is_delivery or current_user.is_super_admin:
             return f(*args, **kwargs)
-        
+
         if current_user.is_admin and current_user.business:
             business = current_user.business
             now = datetime.now(timezone.utc).date()
-            
+
             if hasattr(business, 'requires_subscription') and not business.requires_subscription:
                 return f(*args, **kwargs)
-            
+
             if business.billing_end and business.billing_end < now:
                 business.subscription_status = 'expired'
                 db.session.commit()
-            
+
             if business.subscription_status != 'active':
                 if request.endpoint not in ['main.activate_subscription', 'main.submit_activation_code']:
                     flash('Tu suscripcion ha expirado. Ingresa el codigo de activacion para continuar operando.', 'warning')
                     return redirect(url_for('main.activate_subscription'))
-                    
+
+        return f(*args, **kwargs)
+    return decorated_function
+
+def cash_register_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('main.login'))
+        if not current_user.is_admin:
+            flash('Acceso denegado.', 'danger')
+            return redirect(url_for('main.index'))
+        if not current_user.business:
+            flash('No tenés un negocio asignado.', 'danger')
+            return redirect(url_for('main.index'))
+        if not current_user.business.cash_register_enabled:
+            flash('La gestión de caja no está habilitada para este negocio.', 'warning')
+            return redirect(url_for('admin.dashboard'))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -282,7 +304,7 @@ def obtener_negocios_cercanos(user_lat, user_lon):
     """Retorna lista de negocios dentro del radio de delivery del cliente"""
     negocios_cercanos = []
     all_businesses = Business.query.filter_by(is_active=True).all()
-    
+
     try:
         user_lat, user_lon = validar_coordenadas(user_lat, user_lon)
     except (TypeError, ValueError):
@@ -323,19 +345,19 @@ def obtener_negocios_cercanos(user_lat, user_lon):
 def index():
     if current_user.is_authenticated and current_user.is_delivery:
         return redirect(url_for('delivery.dashboard'))
-    
+
     if current_user.is_authenticated and current_user.is_super_admin:
         return redirect(url_for('super_admin.dashboard'))
-    
+
     if current_user.is_authenticated and current_user.is_admin and current_user.business_id:
         return redirect(url_for('admin.dashboard'))
-    
+
     user_lat = session.get('user_latitude', -25.2637)
     user_lon = session.get('user_longitude', -57.5759)
-    
+
     negocios_cercanos = obtener_negocios_cercanos(user_lat, user_lon)
     business_ids = [n['business'].id for n in negocios_cercanos]
-    
+
     if business_ids:
         products = Product.query.filter(
             Product.business_id.in_(business_ids),
@@ -344,11 +366,11 @@ def index():
         ).order_by(Product.created_at.desc()).limit(20).all()
     else:
         products = []
-    
+
     categories = Category.query.all()
-    
-    return render_template('products.html', 
-                          products=products, 
+
+    return render_template('products.html',
+                          products=products,
                           categories=categories,
                           negocios_cercanos=negocios_cercanos,
                           user_lat=user_lat,
@@ -363,26 +385,26 @@ def index():
 def register():
     if current_user.is_authenticated:
         return redirect(url_for('main.dashboard'))
-    
+
     form = RegistrationForm()
     if form.validate_on_submit():
         existing_username = User.query.filter_by(username=form.username.data).first()
         if existing_username:
             flash('❌ Este nombre de usuario ya está en uso. Probá con otro.', 'danger')
             return render_template('register.html', form=form)
-        
+
         existing_email = User.query.filter_by(email=form.email.data).first()
         if existing_email:
             flash('❌ Este email ya está registrado.', 'danger')
             return render_template('register.html', form=form)
-        
+
         password_errors = User.validate_strong_password(form.password.data)
         if password_errors:
             flash(f'❌ Contraseña débil: {" - ".join(password_errors)}', 'danger')
             return render_template('register.html', form=form)
-        
+
         es_comerciante = (form.account_type.data == 'business')
-        
+
         user = User(
             username=form.username.data,
             email=form.email.data,
@@ -393,10 +415,10 @@ def register():
         )
         user.set_password(form.password.data)
         user.set_security_answer(form.security_answer.data)
-        
+
         db.session.add(user)
         db.session.flush()
-        
+
         if es_comerciante:
             new_business = Business(
                 name=f"Pendiente - {user.username}",
@@ -409,15 +431,15 @@ def register():
             user.business_id = new_business.id
             db.session.add(new_business)
             db.session.commit()
-            
+
             flash('📋 Tu solicitud de comerciante fue enviada. El Super Admin la revisará y activará tu cuenta pronto.', 'info')
             return redirect(url_for('main.login'))
-        
+
         db.session.commit()
         login_user(user)
         flash(f'🎉 ¡Bienvenido {user.username}! Tu cuenta de comprador fue creada exitosamente.', 'success')
         return redirect(url_for('main.dashboard'))
-    
+
     return render_template('register.html', form=form)
 
 
@@ -455,20 +477,20 @@ def login():
     form = LoginForm()
     if form.validate_on_submit():
         identifier = form.username.data.strip()
-        
+
         user = User.query.filter(
             (User.username == identifier) | (User.email == identifier)
         ).first()
-        
+
         if user and user.check_password(form.password.data):
             if not user.is_active:
                 flash('️ Tu cuenta no está activada.', 'warning')
                 return redirect(url_for('main.login'))
-            
+
             privileged = user.is_admin or user.is_delivery or user.is_super_admin
             login_user(user, remember=form.remember_me.data and not privileged)
             flash(f' 👋 ¡Bienvenido de nuevo, {user.display_name}!', 'success')
-            
+
             session['post_login_transition'] = {
                 'user_id': user.id,
                 'target': _transition_target(request.args.get('next'), user),
@@ -476,7 +498,7 @@ def login():
             return redirect(url_for('main.login_transition'))
         else:
             flash('❌ Usuario/email o contraseña incorrectos.', 'danger')
-    
+
     return render_template('login.html', form=form)
 
 
@@ -520,18 +542,18 @@ def logout():
 def dashboard():
     if current_user.is_super_admin:
         return redirect(url_for('super_admin.dashboard'))
-    
+
     if current_user.is_delivery:
         return redirect(url_for('delivery.dashboard'))
-    
+
     if current_user.is_admin:
         return redirect(url_for('admin.dashboard'))
-    
+
     pending_order = current_user.get_pending_order()
     recent_orders = get_recent_orders(current_user.id, limit=10)
     featured_products = get_featured_products(limit=8)
     user_name = current_user.display_name
-    
+
     return render_template('dashboard.html',
         user_name=user_name,
         pending_order=pending_order,
@@ -545,52 +567,52 @@ def products():
     if current_user.is_authenticated and current_user.is_admin:
         flash('Como administrador, usa el panel de gestion.', 'info')
         return redirect(url_for('admin.manage_products'))
-    
+
     if current_user.is_authenticated and current_user.is_delivery:
         flash('Como delivery, usa tu panel de gestion.', 'info')
         return redirect(url_for('delivery.dashboard'))
-    
+
     category_id = request.args.get('category', type=int)
     search = request.args.get('search', type=str)
-    
+
     user_lat = session.get('user_latitude', -25.2637)
     user_lon = session.get('user_longitude', -57.5759)
-    
+
     negocios_cercanos = obtener_negocios_cercanos(user_lat, user_lon)
     business_ids = [n['business'].id for n in negocios_cercanos]
-    
+
     if not business_ids:
-        return render_template('products.html', 
-                              products=[], 
+        return render_template('products.html',
+                              products=[],
                               categories=[],
                               negocios_cercanos=[],
                               user_lat=user_lat,
                               user_lon=user_lon,
                               current_category=category_id,
                               search_term=search)
-    
+
     query = Product.query.filter(
         Product.is_active == True,
         Product.stock > 0,
         Product.business_id.in_(business_ids)
     )
-    
+
     if category_id:
         query = query.filter_by(category_id=category_id)
-    
+
     if search:
         query = query.filter(Product.name.ilike(f'%{search}%'))
-    
+
     products = query.order_by(Product.created_at.desc()).all()
     categories = Category.query.all()
-    
-    return render_template('products.html', 
-                          products=products, 
+
+    return render_template('products.html',
+                          products=products,
                           categories=categories,
                           negocios_cercanos=negocios_cercanos,
                           user_lat=user_lat,
                           user_lon=user_lon,
-                          current_category=category_id, 
+                          current_category=category_id,
                           search_term=search)
 
 
@@ -598,10 +620,10 @@ def products():
 def product_detail(product_id):
     if current_user.is_authenticated and current_user.is_admin:
         return redirect(url_for('admin.manage_products'))
-    
+
     if current_user.is_authenticated and current_user.is_delivery:
         return redirect(url_for('delivery.dashboard'))
-    
+
     product = Product.query.get_or_404(product_id)
     location = session.get('user_location') or {'latitude': session.get('user_latitude', -25.2637), 'longitude': session.get('user_longitude', -57.5759)}
     validate_product_access(product, location, allow_closed=True, require_stock=False)
@@ -616,17 +638,17 @@ def add_to_cart(product_id):
     if current_user.is_admin or current_user.is_delivery:
         flash('No puedes realizar compras.', 'warning')
         return redirect(url_for('main.dashboard'))
-    
+
     if current_user.get_pending_order():
         flash('Ya tienes un pedido pendiente. Completa o cancela ese pedido primero.', 'warning')
         return redirect(url_for('main.dashboard'))
-    
+
     product = Product.query.get_or_404(product_id)
     validate_product_access(product)
     if not product.is_available:
         flash('Producto no disponible.', 'danger')
         return redirect(url_for('main.products'))
-    
+
     cart = session.get('cart', {})
     existing = Product.query.filter(Product.id.in_([int(key) for key in cart])).all()
     if cart and (len(existing) != len(cart) or any(p.business_id != product.business_id for p in existing)):
@@ -635,7 +657,7 @@ def add_to_cart(product_id):
     cart[str(product_id)] = cart.get(str(product_id), 0) + 1
     session['cart_business_id'] = product.business_id
     session['cart'] = cart
-    
+
     flash(f'{product.name} agregado al carrito.', 'success')
     return redirect(request.referrer if is_safe_redirect_url(request.referrer) else url_for('main.products'))
 
@@ -645,15 +667,15 @@ def add_to_cart(product_id):
 def cart():
     if current_user.is_admin or current_user.is_delivery:
         return redirect(url_for('main.dashboard'))
-    
+
     if current_user.get_pending_order():
         flash('Ya tienes un pedido pendiente.', 'warning')
         return redirect(url_for('main.dashboard'))
-    
+
     cart = session.get('cart', {})
     cart_items = []
     total = 0
-    
+
     for product_id, quantity in cart.items():
         product = Product.query.get(int(product_id))
         if product and product.is_available:
@@ -664,7 +686,7 @@ def cart():
                 'subtotal': subtotal
             })
             total += subtotal
-    
+
     return render_template('cart.html', cart_items=cart_items, total=total)
 
 
@@ -673,10 +695,10 @@ def cart():
 def update_cart(product_id):
     if current_user.is_admin or current_user.is_delivery:
         return redirect(url_for('main.dashboard'))
-    
+
     action = request.form.get('action')
     cart = session.get('cart', {})
-    
+
     if action == 'increase' and str(product_id) in cart:
         cart[str(product_id)] += 1
     elif action == 'decrease':
@@ -686,7 +708,7 @@ def update_cart(product_id):
             cart.pop(str(product_id), None)
     elif action == 'remove':
         cart.pop(str(product_id), None)
-    
+
     session['cart'] = cart
     if not cart:
         session.pop('cart_business_id', None)
@@ -700,7 +722,7 @@ def create_order():
     if current_user.is_admin or current_user.is_delivery:
         flash('No puedes realizar compras.', 'warning')
         return redirect(url_for('main.dashboard'))
-    
+
     if request.method == 'POST':
         allowed_fields = {
             'csrf_token', 'shipping_address', 'shipping_phone', 'shipping_reference',
@@ -718,12 +740,12 @@ def create_order():
     if current_user.get_pending_order():
         flash('Ya tienes un pedido pendiente.', 'warning')
         return redirect(url_for('main.dashboard'))
-    
+
     cart = session.get('cart', {})
     if not cart:
         flash('Tu carrito esta vacio.', 'warning')
         return redirect(url_for('main.products'))
-    
+
     form = OrderForm()
     if form.validate_on_submit():
         try:
@@ -759,18 +781,18 @@ def create_order():
         total = 0
         order_items_temp = []
         tiene_importacion = False
-        
+
         for product in locked:
             validate_product_access(product, {'latitude': destination_lat, 'longitude': destination_lon})
             quantity = quantities[product.id]
             if product and product.is_available and product.stock >= quantity:
-                
+
                 if product.category and product.category.name.upper() == 'IMPORTACION':
                     tiene_importacion = True
                     if quantity < 12:
                         flash(f'️ {product.name}: Pedido mínimo de 12 unidades para productos de importación. Tenés {quantity}.', 'warning')
                         return redirect(url_for('main.cart'))
-                
+
                 subtotal = product.price * quantity
                 total += subtotal
                 order_items_temp.append({
@@ -779,27 +801,27 @@ def create_order():
                     'quantity': quantity,
                     'price': product.price
                 })
-        
+
         if total <= 0:
             flash('Error en el calculo del total', 'danger')
             return redirect(url_for('main.cart'))
-        
+
         business_id = None
         if order_items_temp:
             first_product = Product.query.get(order_items_temp[0]['product'].id)
             if first_product:
                 business_id = first_product.business_id
-        
+
         payment_method = request.form.get('payment_method', 'cash')
-        
+
         if tiene_importacion and payment_method == 'cash':
             flash('❌ Los productos de IMPORTACIÓN requieren pago anticipado (Transferencia o QR). Seleccioná otro método.', 'danger')
             return redirect(url_for('main.order_confirm'))
-        
+
         needs_change = request.form.get('needs_change') == 'on'
         cash_bill_amount = float(bounded_decimal(request.form.get('cash_bill_amount', 0))) if payment_method == 'cash' else 0.0
         receipt_path = None
-        
+
         # 🔥 CLOUDINARY: Subir comprobante de pago a la nube
         if payment_method == 'transfer' and 'payment_receipt' in request.files:
             file = request.files['payment_receipt']
@@ -828,7 +850,7 @@ def create_order():
             cash_bill_amount=cash_bill_amount,
             payment_receipt_url=receipt_path
         )
-        
+
         # The confirmed destination belongs to this order, not to live GPS/session updates.
         if business_id:
             business = Business.query.get(business_id)
@@ -848,7 +870,7 @@ def create_order():
             order.delivery_fee = 10000
             total += order.delivery_fee
             order.total_amount = total
-        
+
         for item_data in order_items_temp:
             order_item = OrderItem(
                 order=order,
@@ -859,23 +881,23 @@ def create_order():
             )
             db.session.add(order_item)
             item_data['product'].stock -= item_data['quantity']
-        
+
         db.session.add(order)
         db.session.commit()
         publish('new_order', {'order_id': order.id, 'business_id': order.business_id,
                 'total': order.total_amount}, [f'business_{order.business_id}'])
-        
+
         session.pop('cart', None)
         session.pop('cart_business_id', None)
         session.pop('user_location', None)
-        
+
         if tiene_importacion:
             flash('✅ ¡Pedido de IMPORTACIÓN registrado! Esperá a que confirmemos tu pago y gestionemos tu pedido. Podrás seguir el progreso en tu panel.', 'success')
         else:
             flash('Pedido creado exitosamente en QuickGo!', 'success')
-        
+
         return redirect(url_for('main.dashboard'))
-    
+
     cart_items = []
     for product_id, quantity in cart.items():
         product = Product.query.get(int(product_id))
@@ -886,7 +908,7 @@ def create_order():
                 'price': product.price,
                 'subtotal': product.price * quantity
             })
-    
+
     total = sum(item['subtotal'] for item in cart_items)
     return render_template('order_confirm.html', form=form, cart_items=cart_items, total=total), (400 if request.method == 'POST' else 200)
 
@@ -896,13 +918,13 @@ def create_order():
 def mark_order_received(order_id):
     if current_user.is_admin or current_user.is_delivery:
         return redirect(url_for('main.dashboard'))
-    
+
     order = Order.query.filter_by(id=order_id).with_for_update().first_or_404()
     old_status = order.status
     if order.user_id != current_user.id:
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('main.dashboard'))
-    
+
     if order.status == 'shipped':
         order.status = 'delivered'
         order.delivered_at = datetime.now(timezone.utc)
@@ -911,7 +933,7 @@ def mark_order_received(order_id):
         flash('Pedido marcado como recibido. Gracias por tu compra en QuickGo!', 'success')
     else:
         flash('Este pedido aun no ha sido enviado.', 'warning')
-    
+
     return redirect(url_for('main.dashboard'))
 
 
@@ -928,7 +950,7 @@ def account_settings():
         db.session.commit()
         flash('Tema actualizado.', 'success')
         return redirect(url_for('main.account_settings'))
-    
+
     return render_template('account_settings.html', themes=THEMES)
 
 
@@ -939,7 +961,7 @@ def account_settings():
 def recover_account():
     if current_user.is_authenticated:
         return redirect(url_for('main.dashboard'))
-    
+
     if request.method == 'POST':
         # A new identity must never inherit verification of a previous identity.
         for key in ('recover_user_id', 'security_verified', 'final_verified'):
@@ -949,22 +971,22 @@ def recover_account():
             schedule_recovery(identifier)
             flash(GENERIC_RECOVERY_MESSAGE, 'info')
             return render_template('recover_account.html')
-        
+
         user = User.query.filter(
             (User.username == identifier) | (User.email == identifier)
         ).first()
-        
+
         if not user:
             flash('❌ Usuario no encontrado.', 'danger')
             return render_template('recover_account.html')
-        
+
         if not user.security_question_id or not user.security_answer_hash:
             flash('️ Este usuario no tiene pregunta de seguridad configurada. Contactá al soporte.', 'warning')
             return render_template('recover_account.html')
-        
+
         session['recover_user_id'] = user.id
         return redirect(url_for('main.answer_security_question'))
-    
+
     return render_template('recover_account.html')
 
 
@@ -977,23 +999,23 @@ def answer_security_question():
     if not user_id:
         flash('️ Sesión expirada. Iniciá de nuevo.', 'warning')
         return redirect(url_for('main.recover_account'))
-    
+
     user = User.query.get(user_id)
     if not user:
         session.pop('recover_user_id', None)
         flash('❌ Usuario no encontrado.', 'danger')
         return redirect(url_for('main.recover_account'))
-    
+
     if request.method == 'POST':
         answer = request.form.get('answer', '').strip()
-        
+
         if user.check_security_answer(answer):
             session['security_verified'] = True
             return redirect(url_for('main.select_correct_answer'))
         else:
             flash(' Respuesta incorrecta. Intentá de nuevo.', 'danger')
-    
-    return render_template('answer_security_question.html', 
+
+    return render_template('answer_security_question.html',
                           question=user.security_question.question,
                           username=user.display_name)
 
@@ -1005,29 +1027,29 @@ def select_correct_answer():
         return redirect(url_for('main.recover_account'))
     user_id = session.get('recover_user_id')
     security_verified = session.get('security_verified')
-    
+
     if not user_id or not security_verified:
         flash('⚠️ Debés completar los pasos anteriores.', 'warning')
         return redirect(url_for('main.recover_account'))
-    
+
     user = User.query.get(user_id)
     if not user:
         session.pop('recover_user_id', None)
         session.pop('security_verified', None)
         flash('❌ Usuario no encontrado.', 'danger')
         return redirect(url_for('main.recover_account'))
-    
+
     if request.method == 'POST':
         written_answer = request.form.get('written_answer', '').strip()
-        
+
         if user.check_security_answer(written_answer):
             session['final_verified'] = True
             return redirect(url_for('main.reset_password_final'))
         else:
             flash(' Respuesta incorrecta. Intentá de nuevo.', 'danger')
             return redirect(url_for('main.select_correct_answer'))
-    
-    return render_template('select_answer.html', 
+
+    return render_template('select_answer.html',
                          question=user.security_question.question,
                          username=user.display_name)
 
@@ -1039,11 +1061,11 @@ def reset_password_final():
         return redirect(url_for('main.recover_account'))
     user_id = session.get('recover_user_id')
     final_verified = session.get('final_verified')
-    
+
     if not user_id or not final_verified:
         flash('⚠️ Debés completar la verificación primero.', 'warning')
         return redirect(url_for('main.recover_account'))
-    
+
     user = User.query.get(user_id)
     if not user:
         session.pop('recover_user_id', None)
@@ -1051,30 +1073,30 @@ def reset_password_final():
         session.pop('final_verified', None)
         flash('❌ Usuario no encontrado.', 'danger')
         return redirect(url_for('main.login'))
-    
+
     if request.method == 'POST':
         new_password = request.form.get('new_password', '')
         confirm_password = request.form.get('confirm_password', '')
-        
+
         if new_password != confirm_password:
             flash(' Las contraseñas no coinciden.', 'danger')
             return render_template('reset_password_final.html', username=user.display_name)
-        
+
         password_errors = User.validate_strong_password(new_password)
         if password_errors:
             flash(f'❌ Contraseña débil: {" - ".join(password_errors)}', 'danger')
             return render_template('reset_password_final.html', username=user.display_name)
-        
+
         user.set_password(new_password)
         db.session.commit()
-        
+
         session.pop('recover_user_id', None)
         session.pop('security_verified', None)
         session.pop('final_verified', None)
-        
+
         flash('✅ ¡Contraseña actualizada! Ya podés iniciar sesión.', 'success')
         return redirect(url_for('main.login'))
-    
+
     return render_template('reset_password_final.html', username=user.display_name)
 
 
@@ -1114,7 +1136,7 @@ def reset_with_token():
 def validate_password():
     data = request.get_json()
     password = data.get('password', '')
-    
+
     result = {
         'length': len(password) >= 8,
         'uppercase': any(c.isupper() for c in password),
@@ -1123,7 +1145,7 @@ def validate_password():
         'special': any(c in '!@#$%^&*()_+-=[]{}|;:,.<>?/' for c in password),
         'valid': False
     }
-    
+
     result['valid'] = all([
         result['length'],
         result['uppercase'],
@@ -1131,7 +1153,7 @@ def validate_password():
         result['number'],
         result['special']
     ])
-    
+
     return jsonify(result)
 
 
@@ -1139,15 +1161,15 @@ def validate_password():
 def check_username():
     data = request.get_json()
     username = data.get('username', '').strip()
-    
+
     if not username:
         return jsonify({'available': False, 'message': 'Ingresá un nombre de usuario'})
-    
+
     if len(username) < 3:
         return jsonify({'available': False, 'message': 'Mínimo 3 caracteres'})
-    
+
     user = User.query.filter_by(username=username).first()
-    
+
     if user:
         return jsonify({'available': False, 'message': '❌ Este nombre ya está en uso'})
     else:
@@ -1192,27 +1214,27 @@ def update_user_location():
 def activate_subscription():
     if not current_user.is_admin or not current_user.business:
         return redirect(url_for('main.dashboard'))
-        
+
     business = current_user.business
-    
+
     if hasattr(business, 'requires_subscription') and not business.requires_subscription:
         if business.subscription_status != 'active':
             business.subscription_status = 'active'
             db.session.commit()
         return redirect(url_for('admin.dashboard'))
-    
+
     now = datetime.now(timezone.utc)
-    
+
     if business.subscription_status == 'active' and business.billing_end:
         billing_end = business.billing_end
         if billing_end.tzinfo is None:
             billing_end = billing_end.replace(tzinfo=timezone.utc)
         if billing_end >= now:
             return redirect(url_for('main.dashboard'))
-        
+
     if request.method == 'POST':
         code_input = request.form.get('activation_code', '').strip().upper()
-        
+
         if len(code_input) > 64:
             abort(400, description='Código inválido.')
         if business.activation_code and secrets.compare_digest(business.activation_code.encode(), code_input.encode()):
@@ -1220,20 +1242,20 @@ def activate_subscription():
             if code_expires:
                 if code_expires.tzinfo is None:
                     code_expires = code_expires.replace(tzinfo=timezone.utc)
-                
+
                 if code_expires > now:
                     business.subscription_status = 'active'
-                    
+
                     today = datetime.now(timezone.utc).date()
                     if not business.billing_start:
                         business.billing_start = today
                     business.billing_end = today + timedelta(days=30)
-                    
+
                     business.activation_code = None
                     business.code_expires_at = None
-                    
+
                     db.session.commit()
-                    
+
                     flash('✅ Suscripción activada exitosamente por 30 días! Ya podés operar normalmente.', 'success')
                     return redirect(url_for('main.dashboard'))
                 else:
@@ -1242,7 +1264,7 @@ def activate_subscription():
                 flash('❌ No hay código de activación configurado.', 'danger')
         else:
             flash('❌ Código inválido. Verificá e intentá de nuevo.', 'danger')
-            
+
     return render_template('activate_subscription.html', business=business)
 
 
@@ -1356,19 +1378,19 @@ def dashboard():
     if current_user.is_delivery:
         flash('Redirigiendo al panel de delivery.', 'info')
         return redirect(url_for('delivery.dashboard'))
-    
+
     if current_user.is_super_admin:
         return redirect(url_for('super_admin.dashboard'))
-    
+
     business_id = current_user.business_id
-    
+
     from sqlalchemy import func
-    
+
     total_users = User.query.filter_by(business_id=business_id).count()
     total_sales = db.session.query(db.func.sum(Order.total_amount)).filter(Order.business_id == business_id, Order.status.in_(['delivered', 'picked_up'])).scalar() or 0
     total_orders = Order.query.filter_by(business_id=business_id).count()
     pending_orders = Order.query.filter_by(business_id=business_id, status='pending').count()
-    
+
     best_seller_query = db.session.query(
         Product.name,
         func.sum(OrderItem.quantity).label('total_sold')
@@ -1378,9 +1400,9 @@ def dashboard():
      .group_by(Product.id)\
      .order_by(func.sum(OrderItem.quantity).desc())\
      .first()
-    
+
     best_seller = list(best_seller_query) if best_seller_query else None
-    
+
     top_customer_query = db.session.query(
         User.email,
         func.count(Order.id).label('order_count')
@@ -1389,20 +1411,20 @@ def dashboard():
      .group_by(User.id)\
      .order_by(func.count(Order.id).desc())\
      .first()
-    
+
     top_customer = list(top_customer_query) if top_customer_query else None
-    
+
     recent_orders = Order.query.filter_by(business_id=business_id).order_by(Order.created_at.desc()).limit(10).all()
-    
+
     low_stock_products = Product.query.filter(
         Product.business_id == business_id,
         Product.is_active == True,
         Product.stock > 0,
         Product.stock < 10
     ).order_by(Product.stock.asc()).limit(5).all()
-    
+
     thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
-    
+
     sales_by_category_query = db.session.query(
         Category.name,
         func.sum(OrderItem.quantity * OrderItem.price_at_purchase).label('revenue')
@@ -1412,18 +1434,18 @@ def dashboard():
      .filter(Order.business_id == business_id, Order.created_at >= thirty_days_ago, Order.status.in_(['delivered', 'picked_up']))\
      .group_by(Category.id)\
      .all()
-    
+
     sales_by_category = [[row[0], float(row[1])] for row in sales_by_category_query]
-    
+
     orders_by_status_query = db.session.query(
         Order.status,
         func.count(Order.id).label('count')
     ).filter(Order.business_id == business_id).group_by(Order.status).all()
-    
+
     orders_by_status = [[row[0], row[1]] for row in orders_by_status_query]
-    
+
     seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
-    
+
     daily_sales_query = db.session.query(
         db.func.date(Order.created_at).label('date'),
         func.sum(Order.total_amount).label('total')
@@ -1431,15 +1453,15 @@ def dashboard():
      .group_by(db.func.date(Order.created_at))\
      .order_by(db.func.date(Order.created_at))\
      .all()
-    
+
     daily_sales = [[str(row[0]), float(row[1])] for row in daily_sales_query]
-    
+
     stock_products_query = Product.query.filter(
         Product.business_id == business_id,
         Product.is_active == True,
         Product.stock > 0
     ).order_by(Product.stock.desc()).limit(10).all()
-    
+
     stock_products = [{
         'id': p.id,
         'name': p.name,
@@ -1447,9 +1469,9 @@ def dashboard():
         'price': p.price,
         'category': p.category.name if p.category else 'Sin categoria'
     } for p in stock_products_query]
-    
+
     delivery_users = User.query.filter_by(business_id=business_id, is_delivery=True, is_active=True).all()
-    
+
     return render_template('admin/dashboard.html',
                           coverage_form=BusinessCoverageForm(obj=current_user.business),
         total_users=total_users,
@@ -1485,17 +1507,17 @@ def manage_users():
 @rollback_on_error
 def edit_user(user_id):
     user = User.query.get_or_404(user_id)
-    
+
     if user.business_id != current_user.business_id:
         flash('❌ No podés editar usuarios de otros negocios.', 'danger')
         return redirect(url_for('admin.manage_users'))
-    
+
     if user.is_super_admin:
         flash('❌ No podés editar a un Super Admin.', 'danger')
         return redirect(url_for('admin.manage_users'))
-    
+
     form = AdminUserForm(obj=user)
-    
+
     if form.validate_on_submit():
         user, locked_users = lock_user_role_change(user_id)
         if user.business_id != current_user.business_id or user.is_super_admin:
@@ -1508,11 +1530,11 @@ def edit_user(user_id):
         user.is_active = form.is_active.data
         user.is_admin = form.is_admin.data
         user.is_delivery = request.form.get('is_delivery') == 'true'
-        
+
         db.session.commit()
         flash('✅ Usuario actualizado.', 'success')
         return redirect(url_for('admin.manage_users'))
-    
+
     return render_template('admin/user_form.html', form=form, user=user)
 
 
@@ -1524,11 +1546,11 @@ def edit_user(user_id):
 @rollback_on_error
 def reset_user_password(user_id):
     user = User.query.get_or_404(user_id)
-    
+
     if user.business_id != current_user.business_id:
         flash('❌ No podés resetear contraseñas de usuarios de otros negocios.', 'danger')
         return redirect(url_for('admin.manage_users'))
-    
+
     if user.is_super_admin:
         flash('❌ No podés resetear la contraseña de un Super Admin.', 'danger')
         return redirect(url_for('admin.manage_users'))
@@ -1536,11 +1558,11 @@ def reset_user_password(user_id):
         schedule_recovery(user.email)
         flash(GENERIC_RECOVERY_MESSAGE, 'info')
         return redirect(url_for('admin.manage_users'))
-    
+
     new_password = secrets.token_urlsafe(32)
     user.set_password(new_password)
     db.session.commit()
-    
+
     return private_credential_response(new_password, 'Contraseña restablecida', url_for('admin.manage_users'))
 
 
@@ -1574,11 +1596,11 @@ def create_product():
     if not current_user.business_id:
         flash('Tu cuenta de administrador no tiene un negocio asignado. Contacta al Super Admin.', 'danger')
         return redirect(url_for('admin.dashboard'))
-    
+
     form = ProductForm()
     categories = Category.query.filter_by(business_id=current_user.business_id).all()
     form.populate_categories(categories)
-    
+
     if form.validate_on_submit():
         product = Product(
             name=form.name.data,
@@ -1590,7 +1612,7 @@ def create_product():
             business_id=current_user.business_id,
             image_url=None
         )
-        
+
         # 🔥 CLOUDINARY: Subir imagen de producto a la nube
         if 'image' in request.files:
             file = request.files['image']
@@ -1598,12 +1620,12 @@ def create_product():
                 image_url = upload_to_cloudinary(file, folder='quickgo/products')
                 if image_url:
                     product.image_url = image_url
-        
+
         db.session.add(product)
         db.session.commit()
         flash('Producto creado.', 'success')
         return redirect(url_for('admin.manage_products'))
-    
+
     return render_template('admin/product_form.html', form=form, categories=categories)
 
 
@@ -1617,11 +1639,11 @@ def edit_product(product_id):
     if product.business_id != current_user.business_id:
         flash('No podes editar productos de otros negocios.', 'danger')
         return redirect(url_for('admin.manage_products'))
-    
+
     form = ProductForm(obj=product)
     categories = Category.query.filter_by(business_id=current_user.business_id).all()
     form.populate_categories(categories)
-    
+
     if form.validate_on_submit():
         product.name = form.name.data
         product.description = form.description.data
@@ -1629,7 +1651,7 @@ def edit_product(product_id):
         product.price = form.price.data
         product.stock = form.stock.data
         product.category_id = form.category_id.data
-        
+
         # 🔥 CLOUDINARY: Subir nueva imagen si se proporciona
         if 'image' in request.files:
             file = request.files['image']
@@ -1637,11 +1659,11 @@ def edit_product(product_id):
                 image_url = upload_to_cloudinary(file, folder='quickgo/products')
                 if image_url:
                     product.image_url = image_url
-        
+
         db.session.commit()
         flash('Producto actualizado.', 'success')
         return redirect(url_for('admin.manage_products'))
-    
+
     return render_template('admin/product_form.html', form=form, product=product, categories=categories)
 
 
@@ -1654,7 +1676,7 @@ def delete_product(product_id):
     if product.business_id != current_user.business_id:
         flash('No podes eliminar productos de otros negocios.', 'danger')
         return redirect(url_for('admin.manage_products'))
-    
+
     # Con Cloudinary no borramos el archivo, solo el registro de la BD
     db.session.delete(product)
     db.session.commit()
@@ -1679,7 +1701,7 @@ def manage_categories():
             else:
                 flash('Esta categoria ya existe en tu negocio.', 'warning')
         return redirect(url_for('admin.manage_categories'))
-    
+
     categories = Category.query.filter_by(business_id=current_user.business_id).order_by(Category.name).all()
     return render_template('admin/categories.html', categories=categories)
 
@@ -1693,14 +1715,14 @@ def delete_category(category_id):
     if category.business_id and category.business_id != current_user.business_id:
         flash('No podes eliminar categorias de otros negocios.', 'danger')
         return redirect(url_for('admin.manage_categories'))
-    
+
     if len(category.products) > 0:
         flash('No se puede eliminar: hay productos asociados.', 'warning')
     else:
         db.session.delete(category)
         db.session.commit()
         flash('Categoria eliminada.', 'info')
-    
+
     return redirect(url_for('admin.manage_categories'))
 
 
@@ -1711,17 +1733,17 @@ def delete_category(category_id):
 def manage_orders():
     status_filter = request.args.get('status', 'all')
     query = Order.query.filter_by(business_id=current_user.business_id)
-    
+
     if status_filter != 'all':
         query = query.filter_by(status=status_filter)
-    
+
     orders = query.order_by(Order.created_at.desc()).all()
-    
+
     delivery_users = User.query.filter_by(business_id=current_user.business_id, is_delivery=True, is_active=True).all()
-    
-    return render_template('admin/orders.html', 
-                          orders=orders, 
-                          current_status=status_filter, 
+
+    return render_template('admin/orders.html',
+                          orders=orders,
+                          current_status=status_filter,
                           delivery_users=delivery_users)
 
 
@@ -1738,30 +1760,30 @@ def update_order_status(order_id):
         return redirect(url_for('admin.manage_orders'))
     if order.status == 'picked_up':
         return jsonify({'error': 'Este pedido ya fue retirado del local.'}), 409
-    
+
     new_status = request.form.get('status')
     delivery_driver_id = request.form.get('delivery_driver_id', type=int)
-    
+
     if new_status in ['pending', 'shipped', 'delivered', 'cancelled']:
         order.status = new_status
-        
+
         if delivery_driver_id and new_status == 'shipped':
             driver = User.query.get(delivery_driver_id)
             if driver and driver.is_delivery and driver.is_active and driver.business_id == current_user.business_id:
                 order.delivery_driver_id = delivery_driver_id
-        
+
         if new_status == 'delivered':
             order.delivered_at = datetime.now(timezone.utc)
-        
+
         db.session.commit()
         publish_status(order, old_status)
         if old_status == order.status and old_driver != order.delivery_driver_id and order.delivery_driver_id:
             publish('delivery_assigned', {'event_id': uuid4().hex, 'order_id': order.id, 'delivery_driver_id': order.delivery_driver_id}, order_rooms(order))
-        
+
         flash(f'Estado actualizado: {order.status_label}', 'success')
     else:
         flash('Estado invalido.', 'danger')
-    
+
     return redirect(url_for('admin.manage_orders'))
 
 
@@ -1796,7 +1818,7 @@ def get_order_location(order_id):
     order = Order.query.get_or_404(order_id)
     if order.business_id != current_user.business_id:
         return jsonify({'error': 'Unauthorized'}), 403
-    
+
     return jsonify({
         'order_id': order.id,
         'client': {
@@ -1818,11 +1840,11 @@ def get_order_location(order_id):
 @business_admin_required
 def ver_ubicacion_pedido(order_id):
     order = Order.query.get_or_404(order_id)
-    
+
     if order.business_id != current_user.business_id:
         flash('No tenés permiso para ver este pedido.', 'danger')
         return redirect(url_for('admin.manage_orders'))
-    
+
     return render_template('admin/ver_ubicacion_pedido.html', order=order)
 
 
@@ -1832,27 +1854,27 @@ def ver_ubicacion_pedido(order_id):
 @rollback_on_error
 def actualizar_costo_delivery(order_id):
     order = Order.query.filter_by(id=order_id).populate_existing().with_for_update().first_or_404()
-    
+
     if order.business_id != current_user.business_id:
         return jsonify({'error': 'No autorizado'}), 403
-    
+
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         abort(400)
     nuevo_costo = float(bounded_decimal(data.get('delivery_fee', 10000)))
-    
+
     subtotal = float(bounded_decimal(str(bounded_decimal(order.total_amount) - bounded_decimal(order.delivery_fee))))
     order.delivery_fee = nuevo_costo
     order.total_amount = subtotal + nuevo_costo
-    
+
     db.session.commit()
-    
+
     publish('delivery_fee_updated', {
         'order_id': order.id,
         'new_fee': nuevo_costo,
         'new_total': order.total_amount
     }, rooms=[f'order_{order.id}'])
-    
+
     return jsonify({'success': True, 'new_fee': nuevo_costo, 'new_total': order.total_amount})
 
 
@@ -1861,10 +1883,10 @@ def actualizar_costo_delivery(order_id):
 @business_admin_required
 def api_pedido_datos(order_id):
     order = Order.query.get_or_404(order_id)
-    
+
     if order.business_id != current_user.business_id:
         return jsonify({'error': 'Unauthorized'}), 403
-    
+
     return jsonify({
         'order_id': order.id,
         'status': order.status,
@@ -1884,15 +1906,15 @@ def api_pedido_datos(order_id):
 @rollback_on_error
 def request_delivery(order_id):
     order = Order.query.filter_by(id=order_id).populate_existing().with_for_update().first_or_404()
-    
+
     if order.business_id != current_user.business_id:
         flash('No tenés permiso para este pedido.', 'danger')
         return redirect(url_for('admin.manage_orders'))
-    
+
     if order.status != 'pending':
         flash('El pedido ya fue procesado.', 'warning')
         return redirect(url_for('admin.manage_orders'))
-    
+
     if request.method == 'POST' and current_app.config.get('SECURITY_DELIVERY_CANDIDATES', False):
         radius = float(bounded_decimal(request.form.get('radius', 5), maximum='500'))
         dispatched, recipients, changed = delivery_candidates.create_dispatch(order.id, current_user.business_id, radius)
@@ -1916,21 +1938,21 @@ def request_delivery(order_id):
     if missing_location:
         flash('No hay ubicación del cliente disponible.', 'danger')
         return redirect(url_for('admin.manage_orders'))
-    
+
     if request.method == 'POST':
         radius = float(bounded_decimal(request.form.get('radius', 5), maximum='500'))
-        
+
         nearby_deliveries = User.find_nearby_deliveries(
             order.client_latitude,
             order.client_longitude,
             radius,
             business_id=None
         )
-        
+
         if not nearby_deliveries:
             flash(f'No hay deliverys disponibles en un radio de {radius}km.', 'warning')
             return redirect(url_for('admin.manage_orders'))
-        
+
         delivery_request = DeliveryRequest(
             order_id=order.id,
             business_id=current_user.business_id,
@@ -1939,11 +1961,11 @@ def request_delivery(order_id):
         )
         db.session.add(delivery_request)
         db.session.commit()
-        
+
         for item in nearby_deliveries:
             delivery = item['delivery']
             distance = item['distance']
-            
+
             publish('new_delivery_request', {
                 'request_id': delivery_request.id,
                 'delivery_driver_id': delivery.id,
@@ -1953,10 +1975,10 @@ def request_delivery(order_id):
                 'pickup_address': current_user.business.address,
                 'total_amount': order.total_amount
             }, rooms=[f'delivery_{delivery.id}'])
-        
+
         flash(f'📢 Solicitud enviada a {len(nearby_deliveries)} deliverys en un radio de {radius}km', 'success')
         return redirect(url_for('admin.delivery_request_status', request_id=delivery_request.id))
-    
+
     return render_template('admin/request_delivery.html', order=order)
 
 
@@ -1965,11 +1987,11 @@ def request_delivery(order_id):
 @business_admin_required
 def delivery_request_status(request_id):
     delivery_request = DeliveryRequest.query.get_or_404(request_id)
-    
+
     if delivery_request.business_id != current_user.business_id:
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('admin.manage_orders'))
-    
+
     if current_app.config.get('SECURITY_DELIVERY_CANDIDATES', False):
         delivery_request = delivery_candidates.refresh_expiry(delivery_request.id)
         return render_template('admin/delivery_request_status.html', request=delivery_request)
@@ -1977,11 +1999,196 @@ def delivery_request_status(request_id):
     if delivery_request.status == 'pending' and delivery_request.is_expired():
         delivery_request.status = 'expired'
         db.session.commit()
-        
+
         flash(' La solicitud expiró. Buscando más deliverys...', 'warning')
         return redirect(url_for('admin.request_delivery', order_id=delivery_request.order_id))
-    
+
     return render_template('admin/delivery_request_status.html', request=delivery_request)
+
+
+# ============ GESTIÓN DE CAJA (CASH REGISTER) ============
+
+@admin_bp.route('/cash-register')
+@login_required
+@business_admin_required
+@subscription_required
+@cash_register_required
+def cash_register():
+    session = get_open_session(current_user.business_id)
+    if not session:
+        return render_template('admin/cash_register/index.html', session=None, summary=None, orders=[], movements=[])
+
+    orders = get_session_orders(session)
+    summary = calculate_session_summary(session, orders=orders)
+    return render_template(
+        'admin/cash_register/index.html',
+        session=session,
+        summary=summary,
+        orders=orders,
+        movements=session.movements
+    )
+
+
+@admin_bp.route('/cash-register/open', methods=['POST'])
+@login_required
+@business_admin_required
+@subscription_required
+@cash_register_required
+@rollback_on_error
+def open_cash_register():
+    existing = get_open_session(current_user.business_id, for_update=True)
+    if existing:
+        flash('Ya existe una caja abierta para este negocio.', 'warning')
+        return redirect(url_for('admin.cash_register'))
+
+    raw_amount = request.form.get('opening_amount', '0')
+    try:
+        opening_amount = to_decimal(raw_amount)
+        if opening_amount < Decimal('0.00'):
+            raise ValueError()
+    except (ValueError, TypeError, ArithmeticError):
+        flash('Ingresá un monto inicial válido (mayor o igual a cero).', 'danger')
+        return redirect(url_for('admin.cash_register'))
+
+    new_session = CashSession(
+        business_id=current_user.business_id,
+        opened_by_user_id=current_user.id,
+        opened_at=datetime.now(timezone.utc),
+        opening_amount=opening_amount
+    )
+    db.session.add(new_session)
+    try:
+        db.session.commit()
+        flash(f'Caja abierta exitosamente con monto inicial de GS {opening_amount:,.2f}.', 'success')
+    except Exception:
+        db.session.rollback()
+        flash('No se pudo abrir la caja. Verificá si ya existe una caja abierta.', 'danger')
+
+    return redirect(url_for('admin.cash_register'))
+
+
+@admin_bp.route('/cash-register/movements/new', methods=['POST'])
+@login_required
+@business_admin_required
+@subscription_required
+@cash_register_required
+@rollback_on_error
+def create_cash_movement():
+    session = get_open_session(current_user.business_id, for_update=True)
+    if not session:
+        flash('No hay una caja abierta para registrar movimientos.', 'warning')
+        return redirect(url_for('admin.cash_register'))
+
+    mov_type = request.form.get('type')
+    if mov_type not in ['manual_income', 'expense', 'withdrawal']:
+        flash('Tipo de movimiento no válido.', 'danger')
+        return redirect(url_for('admin.cash_register'))
+
+    description = (request.form.get('description') or '').strip()
+    if not description:
+        flash('La descripción del movimiento es obligatoria.', 'danger')
+        return redirect(url_for('admin.cash_register'))
+    if len(description) > 255:
+        flash('La descripción no puede superar 255 caracteres.', 'danger')
+        return redirect(url_for('admin.cash_register'))
+
+    try:
+        amount = to_decimal(request.form.get('amount'))
+        if amount <= Decimal('0.00'):
+            raise ValueError()
+    except (ValueError, TypeError, ArithmeticError):
+        flash('Ingresá un monto válido mayor a cero.', 'danger')
+        return redirect(url_for('admin.cash_register'))
+
+    movement = CashMovement(
+        cash_session_id=session.id,
+        business_id=current_user.business_id,
+        created_by_user_id=current_user.id,
+        type=mov_type,
+        amount=amount,
+        description=description,
+        created_at=datetime.now(timezone.utc)
+    )
+    db.session.add(movement)
+    db.session.commit()
+    flash(f'{movement.type_label} de GS {amount:,.2f} registrado exitosamente.', 'success')
+    return redirect(url_for('admin.cash_register'))
+
+
+@admin_bp.route('/cash-register/close', methods=['GET', 'POST'])
+@login_required
+@business_admin_required
+@subscription_required
+@cash_register_required
+@rollback_on_error
+def close_cash_register():
+    session = get_open_session(current_user.business_id, for_update=(request.method == 'POST'))
+    if not session:
+        flash('No hay ninguna caja abierta para cerrar.', 'warning')
+        return redirect(url_for('admin.cash_register'))
+
+    orders = get_session_orders(session)
+    summary = calculate_session_summary(session, orders=orders)
+
+    if request.method == 'POST':
+        raw_declared = request.form.get('declared_cash')
+        try:
+            declared_cash = to_decimal(raw_declared)
+            if declared_cash < Decimal('0.00'):
+                raise ValueError()
+        except (ValueError, TypeError, ArithmeticError):
+            flash('Ingresá un monto de efectivo declarado válido (mayor o igual a cero).', 'danger')
+            return render_template('admin/cash_register/close.html', session=session, summary=summary, orders=orders)
+
+        try:
+            closed_session = close_cash_session(session, declared_cash, current_user.id)
+            status_text = closed_session.difference_label
+            diff_str = f"GS {closed_session.difference_at_close:,.2f}"
+            flash(f'Caja #{closed_session.id} cerrada exitosamente. Resultado: {status_text} ({diff_str}).', 'success')
+            return redirect(url_for('admin.cash_register_session_detail', session_id=closed_session.id))
+        except ValueError as e:
+            flash(str(e), 'danger')
+            return redirect(url_for('admin.cash_register'))
+
+    return render_template('admin/cash_register/close.html', session=session, summary=summary, orders=orders)
+
+
+@admin_bp.route('/cash-register/history')
+@login_required
+@business_admin_required
+@subscription_required
+@cash_register_required
+def cash_register_history():
+    sessions = CashSession.query.filter_by(
+        business_id=current_user.business_id
+    ).filter(
+        CashSession.closed_at.isnot(None)
+    ).order_by(
+        CashSession.closed_at.desc()
+    ).all()
+    return render_template('admin/cash_register/history.html', sessions=sessions)
+
+
+@admin_bp.route('/cash-register/session/<int:session_id>')
+@login_required
+@business_admin_required
+@subscription_required
+@cash_register_required
+def cash_register_session_detail(session_id):
+    session = CashSession.query.filter_by(
+        id=session_id,
+        business_id=current_user.business_id
+    ).first_or_404()
+
+    orders = get_session_orders(session)
+    summary = calculate_session_summary(session, orders=orders)
+    return render_template(
+        'admin/cash_register/detail.html',
+        session=session,
+        summary=summary,
+        orders=orders,
+        movements=session.movements
+    )
 
 
 def eligible_delivery(user, delivery_request):
@@ -2002,7 +2209,7 @@ def delivery_requests_list():
     if not current_user.is_delivery:
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('main.index'))
-    
+
     if current_app.config.get('SECURITY_DELIVERY_CANDIDATES', False):
         return render_template('delivery/requests.html', requests=delivery_candidates.pending_for(current_user))
 
@@ -2031,7 +2238,7 @@ def delivery_requests_list():
 def accept_delivery_request(request_id):
     if not current_user.is_delivery:
         return jsonify({'error': 'Unauthorized'}), 403
-    
+
     if current_app.config.get('SECURITY_DELIVERY_CANDIDATES', False):
         delivery_request, order, changed = delivery_candidates.respond(request_id, current_user, True)
         if not changed:
@@ -2052,22 +2259,22 @@ def accept_delivery_request(request_id):
         order.status = 'shipped'
         db.session.commit()
     publish_status(order, old_status)
-    
-    
+
+
     publish('delivery_request_accepted', {
         'request_id': delivery_request.id,
         'order_id': order.id,
         'driver_name': current_user.email,
         'driver_phone': current_user.phone
     }, rooms=[f'business_{delivery_request.business_id}'])
-    
+
     publish('delivery_assigned', {
         'event_id': uuid4().hex, 'delivery_driver_id': order.delivery_driver_id,
         'order_id': order.id,
         'driver_name': current_user.email,
         'driver_phone': current_user.phone
     }, rooms=order_rooms(order))
-    
+
     flash('✅ Solicitud aceptada. ¡A retirar el pedido!', 'success')
     return redirect(url_for('delivery.order_detail', order_id=order.id))
 
@@ -2078,7 +2285,7 @@ def accept_delivery_request(request_id):
 def reject_delivery_request(request_id):
     if not current_user.is_delivery:
         return jsonify({'error': 'Unauthorized'}), 403
-    
+
     if current_app.config.get('SECURITY_DELIVERY_CANDIDATES', False):
         delivery_request, order, changed = delivery_candidates.respond(request_id, current_user, False)
         if not changed:
@@ -2089,13 +2296,13 @@ def reject_delivery_request(request_id):
             return jsonify({'error': 'No autorizado o solicitud expirada'}), 403
         delivery_request.status = 'rejected'
         db.session.commit()
-    
+
     publish('delivery_request_rejected', {
         'request_id': delivery_request.id,
         'order_id': delivery_request.order.id,
         'driver_id': current_user.id
     }, rooms=[f'business_{delivery_request.business_id}'])
-    
+
     flash(' Solicitud rechazada', 'info')
     return redirect(url_for('delivery.dashboard'))
 
@@ -2104,19 +2311,19 @@ def reject_delivery_request(request_id):
 @login_required
 def order_chat(order_id):
     order = Order.query.get_or_404(order_id)
-    
+
     if not can_access_order(current_user, order):
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('main.dashboard'))
-    
+
     messages = ChatMessage.query.filter_by(order_id=order_id)\
         .order_by(ChatMessage.created_at.asc()).all()
-    
+
     for msg in messages:
         if msg.sender_id != current_user.id and not msg.is_read:
             msg.is_read = True
     db.session.commit()
-    
+
     return render_template('chat/order_chat.html', order=order, messages=messages)
 
 
@@ -2136,21 +2343,21 @@ def chat_history(order_id):
 @limiter.limit('60 per minute', methods=['POST'])
 def send_chat_message(order_id):
     order = Order.query.get_or_404(order_id)
-    
+
     if order.status in ['delivered', 'picked_up', 'cancelled']:
         return jsonify({'error': 'Este pedido está cerrado. No se pueden enviar mensajes.'}), 403
-    
+
     if not can_access_order(current_user, order):
         return jsonify({'error': 'Unauthorized'}), 403
-    
+
     data = request.get_json(silent=True)
     if not isinstance(data, dict) or not isinstance(data.get('message'), str):
         return jsonify({'error': 'Mensaje inválido'}), 400
     message_text = data['message'].strip()
-    
+
     if not message_text or len(message_text) > 2000:
         return jsonify({'error': 'El mensaje debe tener entre 1 y 2000 caracteres.'}), 400
-    
+
     message = ChatMessage(
         order_id=order_id,
         sender_id=current_user.id,
@@ -2158,13 +2365,13 @@ def send_chat_message(order_id):
     )
     db.session.add(message)
     db.session.commit()
-    
-    
+
+
     message_data = {
         'order_id': order_id,
         'message': message.to_dict()
     }
-    
+
     publish('new_chat_message', message_data, order_rooms(order))
 
     return jsonify({'success': True, 'message': message.to_dict()})
@@ -2178,22 +2385,22 @@ def dashboard():
     if not current_user.is_delivery:
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('main.index'))
-    
+
     paraguay_tz = timezone(timedelta(hours=-3))
     now = datetime.now(paraguay_tz)
     today = now.date()
-    
+
     delivery_orders = Order.query.filter_by(
         delivery_driver_id=current_user.id,
         status='shipped'
     ).order_by(Order.created_at.desc()).all()
-    
+
     all_delivery_orders = Order.query.filter_by(
         delivery_driver_id=current_user.id
     ).filter(
         Order.status.in_(['delivered', 'cancelled'])
     ).order_by(Order.created_at.desc()).all()
-    
+
     today_earnings = 0
     today_deliveries = 0
     night_earnings = 0
@@ -2201,28 +2408,28 @@ def dashboard():
     total_deliveries = len([o for o in all_delivery_orders if o.status == 'delivered'])
     completed_orders = total_deliveries
     rejected_orders = len([o for o in all_delivery_orders if o.status == 'cancelled'])
-    
+
     for order in all_delivery_orders:
         if order.status == 'delivered' and order.delivery_fee:
             delivered_at = order.delivered_at
-            
+
             if delivered_at:
                 if delivered_at.tzinfo is None:
                     delivered_at = delivered_at.replace(tzinfo=timezone.utc)
-                
+
                 delivered_at_local = delivered_at.astimezone(paraguay_tz)
                 delivered_date = delivered_at_local.date()
                 delivered_hour = delivered_at_local.hour
-                
+
                 if delivered_date == today:
                     today_earnings += order.delivery_fee
                     today_deliveries += 1
-                
+
                 if delivered_hour >= 18 or delivered_hour < 6:
                     night_earnings += order.delivery_fee
                     night_deliveries += 1
-    
-    return render_template('delivery/dashboard.html', 
+
+    return render_template('delivery/dashboard.html',
                           delivery_orders=delivery_orders,
                           all_delivery_orders=all_delivery_orders,
                           today_earnings=today_earnings,
@@ -2240,18 +2447,18 @@ def orders():
     if not current_user.is_delivery:
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('main.index'))
-    
+
     status_filter = request.args.get('status', 'all')
-    
+
     query = Order.query.filter_by(delivery_driver_id=current_user.id)
-    
+
     if status_filter != 'all':
         query = query.filter_by(status=status_filter)
-    
+
     orders = query.order_by(Order.created_at.desc()).all()
-    
-    return render_template('delivery/orders.html', 
-                          orders=orders, 
+
+    return render_template('delivery/orders.html',
+                          orders=orders,
                           current_status=status_filter)
 
 
@@ -2261,13 +2468,13 @@ def order_detail(order_id):
     if not current_user.is_delivery:
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('main.index'))
-    
+
     order = Order.query.get_or_404(order_id)
-    
+
     if order.delivery_driver_id != current_user.id:
         flash('Este pedido no te pertenece.', 'danger')
         return redirect(url_for('delivery.dashboard'))
-    
+
     return render_template('delivery/order_detail.html', order=order)
 
 
@@ -2278,7 +2485,7 @@ def order_detail(order_id):
 def update_location():
     if not current_user.is_delivery:
         return jsonify({'error': 'Unauthorized'}), 403
-    
+
     data = request.get_json(silent=True)
     if not isinstance(data, dict) or set(data) != {'latitude', 'longitude'}:
         return jsonify({'error': 'Coordenadas inválidas'}), 400
@@ -2288,7 +2495,7 @@ def update_location():
         return jsonify({'error': 'Coordenadas inválidas'}), 400
     current_user.latitude, current_user.longitude = lat, lon
     db.session.commit()
-    
+
     return jsonify({'status': 'ok'})
 
 
@@ -2298,15 +2505,15 @@ def update_location():
 def mark_arrived(order_id):
     if not current_user.is_delivery:
         return jsonify({'error': 'Unauthorized'}), 403
-    
+
     order = Order.query.get_or_404(order_id)
-    
+
     if order.delivery_driver_id != current_user.id:
         return jsonify({'error': 'No autorizado'}), 403
-    
+
     order.driver_arrived = True
     db.session.commit()
-    
+
     return jsonify({'success': True})
 
 
@@ -2316,14 +2523,14 @@ def mark_delivered(order_id):
     if not current_user.is_delivery:
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('main.index'))
-    
+
     order = Order.query.filter_by(id=order_id).with_for_update().first_or_404()
     old_status = order.status
-    
+
     if order.delivery_driver_id != current_user.id:
         flash('No autorizado.', 'danger')
         return redirect(url_for('delivery.dashboard'))
-    
+
     if order.status == 'picked_up':
         return jsonify({'error': 'Este pedido ya fue retirado del local.'}), 409
 
@@ -2331,7 +2538,7 @@ def mark_delivered(order_id):
     order.delivered_at = datetime.now(timezone.utc)
     db.session.commit()
     publish_status(order, old_status)
-    
+
     flash('Pedido marcado como entregado.', 'success')
     return redirect(url_for('delivery.dashboard'))
 
@@ -2364,20 +2571,20 @@ def calculate_delivery_fee():
         data = request.get_json()
         client_lat = data.get('latitude')
         client_lon = data.get('longitude')
-        
+
         admin_lat = -25.2637
         admin_lon = -57.5759
-        
+
         if current_user.is_authenticated and current_user.business_id:
             business = Business.query.get(current_user.business_id)
             if business and business.latitude and business.longitude:
                 admin_lat = business.latitude
                 admin_lon = business.longitude
-        
+
         distancia = calcular_distancia_negocio_km(client_lat, client_lon, admin_lat, admin_lon)
-        
+
         costo = 10000 + (distancia * 1000)
-        
+
         return jsonify({
             'distance_km': round(distancia, 2),
             'delivery_fee': costo,
@@ -2397,13 +2604,13 @@ def api_search_products():
     query = request.args.get('q', '')
     if len(query) < 2:
         return jsonify([])
-    
+
     products = Product.query.filter(
         Product.is_active == True,
         Product.stock > 0,
         Product.name.ilike(f'%{query}%')
     ).limit(10).all()
-    
+
     return jsonify([{
         'id': p.id,
         'name': p.name,
@@ -2425,10 +2632,10 @@ def dashboard():
     total_products = Product.query.filter_by(is_active=True).count()
     total_orders = Order.query.count()
     total_revenue = db.session.query(db.func.sum(Order.total_amount)).filter(Order.status.in_(['delivered', 'picked_up'])).scalar() or 0
-    
+
     from sqlalchemy import func
     thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
-    
+
     top_businesses = db.session.query(
         Business.name,
         Business.slug,
@@ -2440,7 +2647,7 @@ def dashboard():
      .group_by(Business.id)\
      .order_by(db.func.sum(Order.total_amount).desc())\
      .limit(10).all()
-    
+
     top_deliveries = db.session.query(
         User.email,
         User.phone,
@@ -2452,18 +2659,18 @@ def dashboard():
      .group_by(User.id, Business.name)\
      .order_by(db.func.count(Order.id).desc())\
      .limit(10).all()
-    
+
     low_performers = Business.query.filter_by(is_active=True)\
         .outerjoin(Order, Business.id == Order.business_id)\
         .group_by(Business.id)\
         .having(db.func.count(Order.id) < 5)\
         .all()
-    
+
     recent_orders = Order.query.order_by(Order.created_at.desc()).limit(20).all()
     recent_businesses = Business.query.order_by(Business.created_at.desc()).limit(10).all()
-    
+
     messages_sent_count = UserMessage.query.filter_by(sender_id=current_user.id).count()
-    
+
     return render_template('super_admin/dashboard.html',
         total_businesses=total_businesses,
         active_businesses=active_businesses,
@@ -2540,7 +2747,7 @@ def create_business():
         if Business.query.filter_by(slug=slug).first():
             flash('Este nombre de negocio ya existe.', 'warning')
             return redirect(url_for('super_admin.create_business'))
-        
+
         business = Business(
             name=request.form.get('name'),
             slug=slug,
@@ -2552,9 +2759,10 @@ def create_business():
             delivery_radius_km=radius,
             commission_rate=float(bounded_decimal(request.form.get('commission_rate', 0.10), maximum='1')),
             delivery_fee_base=float(bounded_decimal(request.form.get('delivery_fee_base', 5000), maximum='1000000000')),
-            delivery_fee_per_km=float(bounded_decimal(request.form.get('delivery_fee_per_km', 1000), maximum='1000000000'))
+            delivery_fee_per_km=float(bounded_decimal(request.form.get('delivery_fee_per_km', 1000), maximum='1000000000')),
+            cash_register_enabled='cash_register_enabled' in request.form
         )
-        
+
         # 🔥 CLOUDINARY: Subir logo del negocio a la nube
         if 'logo' in request.files:
             file = request.files['logo']
@@ -2562,12 +2770,12 @@ def create_business():
                 logo_url = upload_to_cloudinary(file, folder='quickgo/logos')
                 if logo_url:
                     business.logo_url = logo_url
-        
+
         db.session.add(business)
         db.session.commit()
         flash(f'Negocio "{business.name}" creado exitosamente.', 'success')
         return redirect(url_for('super_admin.manage_businesses'))
-    
+
     return render_template('super_admin/business_form.html', business=None)
 
 
@@ -2577,7 +2785,7 @@ def create_business():
 @rollback_on_error
 def edit_business(business_id):
     business = Business.query.get_or_404(business_id)
-    
+
     if request.method == 'POST':
         try:
             latitude, longitude, radius = leer_cobertura_negocio(request.form)
@@ -2596,26 +2804,34 @@ def edit_business(business_id):
         business.delivery_fee_base = float(bounded_decimal(request.form.get('delivery_fee_base', 5000), maximum='1000000000'))
         business.delivery_fee_per_km = float(bounded_decimal(request.form.get('delivery_fee_per_km', 1000), maximum='1000000000'))
         business.is_active = 'is_active' in request.form
-        
+
         if 'monthly_fee' in request.form:
             business.monthly_fee = float(bounded_decimal(request.form.get('monthly_fee', 0), maximum='1000000000'))
         if 'billing_start' in request.form and request.form.get('billing_start'):
             business.billing_start = datetime.strptime(request.form.get('billing_start'), '%Y-%m-%d').date()
         if 'billing_end' in request.form and request.form.get('billing_end'):
             business.billing_end = datetime.strptime(request.form.get('billing_end'), '%Y-%m-%d').date()
-        
+
         business.requires_subscription = 'requires_subscription' in request.form
         business.subscription_exempt_reason = request.form.get('subscription_exempt_reason', '').strip()
-        
+
         if not business.requires_subscription:
             business.subscription_status = 'active'
             business.activation_code = None
             business.code_expires_at = None
-        
+
+        wants_cash_register = 'cash_register_enabled' in request.form
+        if business.cash_register_enabled and not wants_cash_register:
+            open_session = CashSession.query.filter_by(business_id=business.id, closed_at=None).first()
+            if open_session:
+                flash('Este negocio tiene una caja abierta. Debe cerrar la caja antes de desactivar la gestión de caja.', 'danger')
+                return redirect(url_for('super_admin.edit_business', business_id=business_id))
+        business.cash_register_enabled = wants_cash_register
+
         db.session.commit()
         flash(f'Negocio "{business.name}" actualizado.', 'success')
         return redirect(url_for('super_admin.edit_business', business_id=business_id))
-    
+
     return render_template('super_admin/business_form.html', business=business)
 
 
@@ -2624,24 +2840,24 @@ def edit_business(business_id):
 @super_admin_required
 def generate_activation_code(business_id):
     business = Business.query.get_or_404(business_id)
-    
+
     if not business.requires_subscription:
         flash(f'ℹ️ El negocio "{business.name}" está EXENTO de suscripción. No necesita código.', 'info')
         return redirect(url_for('super_admin.edit_business', business_id=business_id))
-    
+
     new_code = secrets.token_hex(4).upper()
-    
+
     business.activation_code = new_code
     business.code_expires_at = datetime.now(timezone.utc) + timedelta(hours=5)
     business.subscription_status = 'pending'
-    
+
     if not business.billing_start:
         business.billing_start = datetime.now(timezone.utc).date()
     if not business.billing_end:
         business.billing_end = datetime.now(timezone.utc).date() + timedelta(days=30)
-    
+
     db.session.commit()
-    
+
     return private_credential_response(new_code, 'Código de activación: válido por 5 horas',
                                        url_for('super_admin.edit_business', business_id=business_id))
 
@@ -2651,16 +2867,16 @@ def generate_activation_code(business_id):
 @super_admin_required
 def view_business(business_id):
     business = Business.query.get_or_404(business_id)
-    
+
     business_products = Product.query.filter_by(business_id=business.id, is_active=True).count()
     business_orders = Order.query.filter_by(business_id=business.id).count()
     business_revenue = db.session.query(db.func.sum(Order.total_amount)).filter(Order.business_id == business.id, Order.status.in_(['delivered', 'picked_up'])).scalar() or 0
     business_customers = db.session.query(db.func.count(db.distinct(Order.user_id))).filter_by(business_id=business.id).scalar() or 0
-    
+
     recent_orders = Order.query.filter_by(business_id=business.id).order_by(Order.created_at.desc()).limit(10).all()
     products = Product.query.filter_by(business_id=business.id).order_by(Product.created_at.desc()).limit(10).all()
     delivery_drivers = User.query.filter_by(business_id=business.id, is_delivery=True).all()
-    
+
     return render_template('super_admin/view_business.html',
         business=business,
         business_products=business_products,
@@ -2693,12 +2909,12 @@ def reset_user_password(user_id):
         schedule_recovery(user.email)
         flash(GENERIC_RECOVERY_MESSAGE, 'info')
         return redirect(url_for('super_admin.manage_users'))
-    
+
     new_password = secrets.token_urlsafe(32)
-    
+
     user.set_password(new_password)
     db.session.commit()
-    
+
     return private_credential_response(new_password, 'Contraseña restablecida', url_for('super_admin.manage_users'))
 
 
@@ -2710,7 +2926,7 @@ def reset_user_password(user_id):
 def edit_user(user_id):
     user = User.query.get_or_404(user_id)
     businesses = Business.query.all()
-    
+
     if request.method == 'POST':
         user, locked_users = lock_user_role_change(user_id)
         business_value = request.form.get('business_id')
@@ -2725,19 +2941,19 @@ def edit_user(user_id):
                              super_admin='is_super_admin' in request.form, business_id=business_id)
         user.email = request.form.get('email')
         user.phone = request.form.get('phone')
-        
+
         user.is_active = 'is_active' in request.form
         user.is_admin = 'is_admin' in request.form
         user.is_delivery = 'is_delivery' in request.form
         user.is_super_admin = 'is_super_admin' in request.form
-        
+
         business_id_val = request.form.get('business_id')
         user.business_id = int(business_id_val) if business_id_val else None
-            
+
         db.session.commit()
         flash(f'Usuario {user.email} actualizado exitosamente.', 'success')
         return redirect(url_for('super_admin.manage_users'))
-        
+
     return render_template('super_admin/user_form.html', user=user, businesses=businesses)
 
 
@@ -2748,11 +2964,11 @@ def edit_user(user_id):
 @rollback_on_error
 def delete_user(user_id):
     user, locked_users = lock_user_role_change(user_id)
-    
+
     if user.id == current_user.id:
         flash('No puedes eliminar tu propia cuenta de Super Admin.', 'danger')
         return redirect(url_for('super_admin.manage_users'))
-        
+
     validate_role_change(user, locked_users, active=False, admin=False, delivery=False,
                          super_admin=False, business_id=None)
     db.session.delete(user)
@@ -2779,9 +2995,9 @@ def soporte():
     if not current_user.is_admin or not current_user.business:
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('main.dashboard'))
-    
+
     business = current_user.business
-    
+
     if request.method == 'POST':
         message = request.form.get('message', '').strip()
         if len(message) > 2000:
@@ -2799,14 +3015,14 @@ def soporte():
                     'message': {**chat.to_dict(), 'sender_id': chat.sender_id}}, [f'support_{business.id}'])
             flash('✅ Mensaje enviado al Super Admin.', 'success')
             return redirect(url_for('main.soporte'))
-    
+
     mensajes = SupportChat.query.filter_by(business_id=business.id).order_by(SupportChat.created_at.asc()).all()
-    
+
     for m in mensajes:
         if m.is_from_admin and not m.is_read:
             m.is_read = True
     db.session.commit()
-    
+
     return render_template('soporte.html', business=business, mensajes=mensajes)
 
 
@@ -2816,7 +3032,7 @@ def soporte():
 def soporte_lista():
     """Lista de negocios con mensajes de soporte"""
     from sqlalchemy import func
-    
+
     negocios_con_mensajes = db.session.query(
         Business.id,
         Business.name,
@@ -2826,7 +3042,7 @@ def soporte_lista():
      .group_by(Business.id)\
      .order_by(func.max(SupportChat.created_at).desc())\
      .all()
-    
+
     return render_template('super_admin/soporte_lista.html', negocios=negocios_con_mensajes)
 
 
@@ -2837,7 +3053,7 @@ def soporte_lista():
 def soporte_admin(business_id):
     """Chat de soporte desde Super Admin hacia comerciante"""
     business = Business.query.get_or_404(business_id)
-    
+
     if request.method == 'POST':
         message = request.form.get('message', '').strip()
         if len(message) > 2000:
@@ -2854,14 +3070,14 @@ def soporte_admin(business_id):
             publish('private_chat_message', {'channel': f'support_{business.id}',
                     'message': {**chat.to_dict(), 'sender_id': chat.sender_id}}, [f'support_{business.id}'])
             return redirect(url_for('super_admin.soporte_admin', business_id=business_id))
-    
+
     mensajes = SupportChat.query.filter_by(business_id=business.id).order_by(SupportChat.created_at.asc()).all()
-    
+
     for m in mensajes:
         if not m.is_from_admin and not m.is_read:
             m.is_read = True
     db.session.commit()
-    
+
     return render_template('super_admin/soporte_admin.html', business=business, mensajes=mensajes)
 
 
@@ -2871,14 +3087,14 @@ def soporte_admin(business_id):
 def chat_delivery_negocio(order_id):
     """Chat entre delivery y negocio para un pedido específico"""
     order = Order.query.get_or_404(order_id)
-    
+
     es_delivery = current_user.is_delivery and order.delivery_driver_id == current_user.id
     es_admin_negocio = current_user.is_admin and current_user.business_id == order.business_id
-    
+
     if not (es_delivery or es_admin_negocio):
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('main.dashboard'))
-    
+
     if request.method == 'POST':
         message = request.form.get('message', '').strip()
         if len(message) > 2000:
@@ -2895,14 +3111,14 @@ def chat_delivery_negocio(order_id):
             publish('private_chat_message', {'channel': f'delivery_chat_{order.id}',
                     'message': {**chat.to_dict(), 'sender_id': chat.sender_id}}, [f'delivery_chat_{order.id}'])
             return redirect(url_for('main.chat_delivery_negocio', order_id=order.id))
-    
+
     mensajes = DeliveryBusinessChat.query.filter_by(order_id=order.id).order_by(DeliveryBusinessChat.created_at.asc()).all()
-    
+
     for m in mensajes:
         if m.sender_id != current_user.id and not m.is_read:
             m.is_read = True
     db.session.commit()
-    
+
     negocio = Business.query.get(order.business_id)
     return render_template('chat_delivery.html', order=order, negocio=negocio, mensajes=mensajes)
 
@@ -2915,15 +3131,15 @@ def chat_delivery_negocio(order_id):
 def send_message_to_user(user_id):
     """Super Admin envía mensaje a cualquier usuario"""
     recipient = User.query.get_or_404(user_id)
-    
+
     if request.method == 'POST':
         subject = request.form.get('subject', '').strip()
         message_text = request.form.get('message', '').strip()
-        
+
         if not subject or not message_text:
             flash('❌ El asunto y el mensaje son obligatorios.', 'danger')
             return redirect(url_for('super_admin.send_message_to_user', user_id=user_id))
-        
+
         new_message = UserMessage(
             sender_id=current_user.id,
             recipient_id=recipient.id,
@@ -2932,10 +3148,10 @@ def send_message_to_user(user_id):
         )
         db.session.add(new_message)
         db.session.commit()
-        
+
         flash(f'✅ Mensaje enviado a {recipient.display_name} ({recipient.email})', 'success')
         return redirect(url_for('super_admin.manage_users'))
-    
+
     return render_template('super_admin/send_message.html', recipient=recipient)
 
 
@@ -2955,12 +3171,12 @@ def my_messages():
     """Usuario ve sus mensajes recibidos del Super Admin"""
     messages = UserMessage.query.filter_by(recipient_id=current_user.id)\
         .order_by(UserMessage.created_at.desc()).all()
-    
+
     for msg in messages:
         if not msg.is_read:
             msg.is_read = True
     db.session.commit()
-    
+
     return render_template('user_messages.html', messages=messages)
 
 
@@ -2969,15 +3185,15 @@ def my_messages():
 def read_message(message_id):
     """Usuario lee un mensaje específico"""
     message = UserMessage.query.get_or_404(message_id)
-    
+
     if message.recipient_id != current_user.id:
         flash(' Acceso denegado.', 'danger')
         return redirect(url_for('main.my_messages'))
-    
+
     if not message.is_read:
         message.is_read = True
         db.session.commit()
-    
+
     return render_template('read_message.html', message=message)
 
 

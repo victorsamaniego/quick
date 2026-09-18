@@ -1,0 +1,365 @@
+{% extends "base.html" %}
+{% block title %}Gestión de Caja - QuickGo{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+        <div>
+            <h2 class="fw-bold mb-1"><i class="bi bi-cash-stack text-warning"></i> Gestión de Caja</h2>
+            <p class="text-muted mb-0">Control de apertura, movimientos en efectivo, ventas y cierre diario</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('admin.cash_register_history') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-clock-history"></i> Historial de Cierres
+            </a>
+            <a href="{{ url_for('admin.dashboard') }}" class="btn btn-outline-dark">
+                <i class="bi bi-arrow-left"></i> Volver al Panel
+            </a>
+        </div>
+    </div>
+
+    {% if not session %}
+    <!-- CAJA CERRADA: FORMULARIO DE APERTURA -->
+    <div class="row justify-content-center">
+        <div class="col-md-6 col-lg-5">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-4 text-center">
+                    <div class="mb-3">
+                        <span class="badge bg-secondary fs-6 px-3 py-2">
+                            <i class="bi bi-lock-fill"></i> Caja actualmente cerrada
+                        </span>
+                    </div>
+                    <div class="my-3">
+                        <i class="bi bi-wallet2 text-warning display-4"></i>
+                    </div>
+                    <h4 class="fw-bold mb-2">Abrir Caja Diaria</h4>
+                    <p class="text-muted small mb-4">
+                        Ingresá el monto de efectivo inicial (fondo de cambio) con el que se inicia la jornada.
+                    </p>
+
+                    <form method="POST" action="{{ url_for('admin.open_cash_register') }}" class="text-start">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold" for="opening_amount">Monto Inicial en Efectivo (GS) *</label>
+                            <div class="input-group input-group-lg">
+                                <span class="input-group-text bg-light fw-bold">GS</span>
+                                <input type="number" step="any" min="0" name="opening_amount" id="opening_amount"
+                                       class="form-control fw-bold text-end" value="0" required autofocus>
+                            </div>
+                            <small class="text-muted">Podés ingresar 0 si no hay fondo inicial.</small>
+                        </div>
+                        <button type="submit" class="btn btn-warning w-100 py-3 fw-bold fs-5">
+                            <i class="bi bi-unlock-fill"></i> Abrir Caja Ahora
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% else %}
+    <!-- CAJA ABIERTA: DASHBOARD EN TIEMPO REAL -->
+    <div class="alert alert-success border-0 shadow-sm d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+        <div>
+            <span class="badge bg-success fs-6 me-2"><i class="bi bi-check-circle-fill"></i> CAJA ABIERTA</span>
+            <strong>Iniciada el:</strong> {{ session.opened_at_formatted }} por <strong>{{ session.opened_by.username or session.opened_by.email }}</strong>
+        </div>
+        <div>
+            <span class="badge bg-white text-dark border px-3 py-2 fs-6">
+                Fondo Inicial: <strong>GS {{ "{:,.2f}".format(session.opening_amount) }}</strong>
+            </span>
+        </div>
+    </div>
+
+    <!-- TARJETAS DE TOTALES Y EFECTIVO ESPERADO -->
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <span class="text-muted small d-block mb-1">Monto Inicial</span>
+                    <h4 class="fw-bold text-dark mb-0">GS {{ "{:,.2f}".format(summary.opening_amount) }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <span class="text-muted small d-block mb-1">Ventas Efectivo (+)</span>
+                    <h4 class="fw-bold text-success mb-0">+GS {{ "{:,.2f}".format(summary.cash_sales) }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <span class="text-muted small d-block mb-1">Ingresos Manuales (+)</span>
+                    <h4 class="fw-bold text-primary mb-0">+GS {{ "{:,.2f}".format(summary.manual_income) }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <span class="text-muted small d-block mb-1">Gastos y Retiros (-)</span>
+                    <h4 class="fw-bold text-danger mb-0">-GS {{ "{:,.2f}".format(summary.expenses + summary.withdrawals) }}</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TARJETA DESTACADA: EFECTIVO ESPERADO EN CAJA -->
+    <div class="row mb-4">
+        <div class="col-12 col-lg-8">
+            <div class="card border-0 shadow-sm bg-warning bg-opacity-10 border-start border-warning border-5 h-100">
+                <div class="card-body p-4 d-flex justify-content-between align-items-center flex-wrap gap-3">
+                    <div>
+                        <span class="text-uppercase fw-bold text-muted small d-block">Efectivo Físico Esperado en Caja</span>
+                        <h2 class="fw-bold text-dark display-6 mb-1">
+                            GS {{ "{:,.2f}".format(summary.expected_cash) }}
+                        </h2>
+                        <small class="text-muted">
+                            Fórmula: Inicial ({{ "{:,.0f}".format(summary.opening_amount) }}) + Ventas Efectivo ({{ "{:,.0f}".format(summary.cash_sales) }}) + Ingresos ({{ "{:,.0f}".format(summary.manual_income) }}) - Gastos ({{ "{:,.0f}".format(summary.expenses) }}) - Retiros ({{ "{:,.0f}".format(summary.withdrawals) }})
+                        </small>
+                    </div>
+                    <div class="d-flex flex-column gap-2">
+                        <a href="{{ url_for('admin.close_cash_register') }}" class="btn btn-danger btn-lg px-4 fw-bold shadow-sm">
+                            <i class="bi bi-lock-fill"></i> Arqueo y Cierre
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body p-4">
+                    <h6 class="fw-bold text-muted text-uppercase small mb-3">Ventas Digitales (No afectan efectivo)</h6>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>QR:</span>
+                        <strong class="text-dark">GS {{ "{:,.2f}".format(summary.qr_sales) }}</strong>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Transferencia:</span>
+                        <strong class="text-dark">GS {{ "{:,.2f}".format(summary.transfer_sales) }}</strong>
+                    </div>
+                    <hr class="my-2">
+                    <div class="d-flex justify-content-between fw-bold">
+                        <span>Total Ventas Negocio:</span>
+                        <span class="text-success">GS {{ "{:,.2f}".format(summary.total_sales) }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- BOTONES DE ACCIONES RÁPIDAS (MOVIMIENTOS) -->
+    <div class="d-flex flex-wrap gap-2 mb-4">
+        <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#modalIncome">
+            <i class="bi bi-plus-circle"></i> Registrar Ingreso Manual
+        </button>
+        <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalExpense">
+            <i class="bi bi-dash-circle"></i> Registrar Gasto
+        </button>
+        <button type="button" class="btn btn-outline-warning text-dark" data-bs-toggle="modal" data-bs-target="#modalWithdrawal">
+            <i class="bi bi-cash"></i> Registrar Retiro de Efectivo
+        </button>
+    </div>
+
+    <!-- TABLAS DE MOVIMIENTOS Y VENTAS -->
+    <div class="row g-4">
+        <!-- Movimientos Manuales -->
+        <div class="col-12 col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
+                    <h5 class="fw-bold mb-0"><i class="bi bi-arrow-left-right text-muted"></i> Movimientos Manuales</h5>
+                    <span class="badge bg-secondary">{{ movements|length }} movimientos</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Hora</th>
+                                    <th>Tipo</th>
+                                    <th>Descripción</th>
+                                    <th class="text-end">Monto</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if movements %}
+                                    {% for mov in movements %}
+                                    <tr>
+                                        <td><small class="text-muted">{{ mov.created_at_formatted }}</small></td>
+                                        <td>
+                                            <span class="badge bg-{{ mov.type_badge_color }}">{{ mov.type_label }}</span>
+                                        </td>
+                                        <td>{{ mov.description }}</td>
+                                        <td class="text-end fw-bold text-{{ 'success' if mov.type == 'manual_income' else 'danger' }}">
+                                            {{ mov.type_sign }}GS {{ "{:,.2f}".format(mov.amount) }}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="4" class="text-center py-4 text-muted">
+                                            No hay movimientos manuales registrados en esta sesión.
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ventas de la Sesión -->
+        <div class="col-12 col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
+                    <h5 class="fw-bold mb-0"><i class="bi bi-cart-check text-muted"></i> Ventas de la Sesión</h5>
+                    <span class="badge bg-success">{{ orders|length }} ventas</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Pedido</th>
+                                    <th>Método</th>
+                                    <th>Estado</th>
+                                    <th class="text-end">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if orders %}
+                                    {% for o in orders %}
+                                    <tr>
+                                        <td>
+                                            <strong>#{{ o.id }}</strong>
+                                        </td>
+                                        <td>
+                                            {% if o.payment_method == 'cash' %}
+                                                <span class="badge bg-success">💵 Efectivo</span>
+                                            {% elif o.payment_method == 'qr' %}
+                                                <span class="badge bg-info text-dark">📱 QR</span>
+                                            {% elif o.payment_method == 'transfer' %}
+                                                <span class="badge bg-primary">🏦 Transferencia</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">{{ o.payment_method }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-{{ o.status_color }}">{{ o.status_label }}</span>
+                                        </td>
+                                        <td class="text-end fw-bold">
+                                            GS {{ "{:,.2f}".format(o.total_amount) }}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="4" class="text-center py-4 text-muted">
+                                            No hay ventas entregadas o retiradas durante esta sesión.
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL REGISTRAR INGRESO -->
+    <div class="modal fade" id="modalIncome" tabindex="-1" aria-labelledby="modalIncomeLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+                <form method="POST" action="{{ url_for('admin.create_cash_movement') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="type" value="manual_income">
+                    <div class="modal-header bg-success text-white">
+                        <h5 class="modal-title" id="modalIncomeLabel"><i class="bi bi-plus-circle"></i> Registrar Ingreso Manual</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                    </div>
+                    <div class="modal-body p-4">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Monto (GS) *</label>
+                            <input type="number" step="any" min="0.01" name="amount" class="form-control form-control-lg text-end fw-bold" placeholder="0.00" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Descripción o Motivo *</label>
+                            <input type="text" name="description" class="form-control" placeholder="Ej: Cambio adicional, cobranza externa..." required maxlength="255">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-success px-4">Guardar Ingreso</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL REGISTRAR GASTO -->
+    <div class="modal fade" id="modalExpense" tabindex="-1" aria-labelledby="modalExpenseLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+                <form method="POST" action="{{ url_for('admin.create_cash_movement') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="type" value="expense">
+                    <div class="modal-header bg-danger text-white">
+                        <h5 class="modal-title" id="modalExpenseLabel"><i class="bi bi-dash-circle"></i> Registrar Gasto</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                    </div>
+                    <div class="modal-body p-4">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Monto (GS) *</label>
+                            <input type="number" step="any" min="0.01" name="amount" class="form-control form-control-lg text-end fw-bold" placeholder="0.00" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Descripción o Motivo *</label>
+                            <input type="text" name="description" class="form-control" placeholder="Ej: Compra de insumos, limpieza, hielo..." required maxlength="255">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-danger px-4">Guardar Gasto</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL REGISTRAR RETIRO -->
+    <div class="modal fade" id="modalWithdrawal" tabindex="-1" aria-labelledby="modalWithdrawalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+                <form method="POST" action="{{ url_for('admin.create_cash_movement') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="type" value="withdrawal">
+                    <div class="modal-header bg-warning text-dark">
+                        <h5 class="modal-title" id="modalWithdrawalLabel"><i class="bi bi-cash"></i> Registrar Retiro de Efectivo</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                    </div>
+                    <div class="modal-body p-4">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Monto (GS) *</label>
+                            <input type="number" step="any" min="0.01" name="amount" class="form-control form-control-lg text-end fw-bold" placeholder="0.00" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Descripción o Motivo *</label>
+                            <input type="text" name="description" class="form-control" placeholder="Ej: Sangría de caja a caja fuerte, retiro del dueño..." required maxlength="255">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-warning px-4 text-dark fw-bold">Guardar Retiro</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

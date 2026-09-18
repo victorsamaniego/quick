@@ -2,6 +2,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timezone, timedelta
+from decimal import Decimal
 import random
 import secrets
 import string
@@ -26,33 +27,33 @@ class User(UserMixin, db.Model):
     latitude = db.Column(db.Float)
     longitude = db.Column(db.Float)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    
+
     security_question = db.relationship('SecurityQuestion', foreign_keys=[security_question_id], lazy=True)
     orders = db.relationship('Order', backref='customer', lazy=True, foreign_keys='Order.user_id')
     delivery_orders = db.relationship('Order', backref='driver', lazy=True, foreign_keys='Order.delivery_driver_id')
     otp_codes = db.relationship('OTPCode', backref='user', lazy=True, cascade='all, delete-orphan')
     business = db.relationship('Business', back_populates='admin_user', lazy=True)
     received_notifications = db.relationship('NotificationRecipient', foreign_keys='NotificationRecipient.user_id', lazy=True)
-    
+
     def get_id(self):
         from auth_identity import authentication_id
         return authentication_id(self)
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
-    
+
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
-    
+
     def set_security_answer(self, answer):
         if answer:
             self.security_answer_hash = generate_password_hash(answer.strip().lower())
-    
+
     def check_security_answer(self, answer):
         if not self.security_answer_hash or not answer:
             return False
         return check_password_hash(self.security_answer_hash, answer.strip().lower())
-    
+
     @staticmethod
     def validate_strong_password(password):
         errors = []
@@ -67,22 +68,22 @@ class User(UserMixin, db.Model):
         if not any(c in '!@#$%^&*()_+-=[]{}|;:,.<>?/' for c in password):
             errors.append('Debe tener al menos un signo (!@#$%^&* etc)')
         return errors
-    
+
     def get_pending_order(self):
         return Order.query.filter_by(user_id=self.id, status='pending').first()
-    
+
     @property
     def is_customer(self):
         return not self.is_admin and not self.is_delivery and not self.is_super_admin
-    
+
     @property
     def business_name(self):
         return self.business.name if self.business else None
-    
+
     @property
     def display_name(self):
         return self.username or self.email.split('@')[0]
-    
+
     @staticmethod
     def find_nearby_deliveries(latitude, longitude, radius_km, business_id=None):
         from math import radians, sin, cos, sqrt, atan2
@@ -112,7 +113,7 @@ class User(UserMixin, db.Model):
                     })
         nearby_deliveries.sort(key=lambda x: x['distance'])
         return nearby_deliveries
-    
+
     def __repr__(self):
         return f'<User {self.username or self.email}>'
 
@@ -122,10 +123,10 @@ class SecurityQuestion(db.Model):
     question = db.Column(db.String(200), nullable=False, unique=True)
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    
+
     def __repr__(self):
         return f'<SecurityQuestion {self.question[:30]}...>'
-    
+
     @staticmethod
     def get_random_question(exclude_ids=None):
         query = SecurityQuestion.query.filter_by(is_active=True)
@@ -135,7 +136,7 @@ class SecurityQuestion(db.Model):
         if questions:
             return random.choice(questions)
         return None
-    
+
     @staticmethod
     def seed_default_questions():
         default_questions = [
@@ -184,6 +185,7 @@ class Business(db.Model):
     delivery_radius_km = db.Column(db.Float, default=10.0)
     is_open = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
     is_quickgold = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    cash_register_enabled = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     requires_subscription = db.Column(db.Boolean, default=True)
     subscription_exempt_reason = db.Column(db.String(200), nullable=True)
     is_active = db.Column(db.Boolean, default=True)
@@ -201,7 +203,7 @@ class Business(db.Model):
     code_expires_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-    
+
     admin_user = db.relationship('User', back_populates='business', lazy=True, uselist=False)
     products = db.relationship('Product', back_populates='business', lazy=True, cascade='all, delete-orphan')
     orders = db.relationship('Order', back_populates='business', lazy=True)
@@ -209,7 +211,7 @@ class Business(db.Model):
     delivery_drivers = db.relationship('User', lazy=True,
                                       primaryjoin="and_(User.business_id==Business.id, User.is_delivery==True)",
                                       overlaps="business")
-    
+
     @property
     def revenue_last_30_days(self):
         thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
@@ -219,7 +221,7 @@ class Business(db.Model):
             Order.created_at >= thirty_days_ago
         ).scalar()
         return result or 0
-    
+
     @property
     def orders_last_30_days(self):
         thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
@@ -227,15 +229,15 @@ class Business(db.Model):
             Order.business_id == self.id,
             Order.created_at >= thirty_days_ago
         ).count()
-    
+
     @property
     def active_products_count(self):
         return Product.query.filter_by(business_id=self.id, is_active=True).count()
-    
+
     @property
     def platform_commission(self):
         return self.total_sales * self.commission_rate
-    
+
     def __repr__(self):
         return f'<Business {self.name}>'
 
@@ -247,11 +249,11 @@ class OTPCode(db.Model):
     purpose = db.Column(db.String(20), nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     used = db.Column(db.Boolean, default=False)
-    
+
     @staticmethod
     def generate_code():
         return ''.join(secrets.choice(string.digits) for _ in range(6))
-    
+
     def is_expired(self, expiry_minutes=10):
         created = self.created_at
         if created is None:
@@ -259,7 +261,7 @@ class OTPCode(db.Model):
         if created.tzinfo is None:
             created = created.replace(tzinfo=timezone.utc)
         return self.used or datetime.now(timezone.utc) >= created + timedelta(minutes=expiry_minutes)
-    
+
     def __repr__(self):
         return f'<OTPCode for user {self.user_id}>'
 
@@ -270,13 +272,13 @@ class Category(db.Model):
     description = db.Column(db.Text)
     business_id = db.Column(db.Integer, db.ForeignKey('businesses.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    
+
     products = db.relationship('Product', backref='category', lazy=True)
-    
+
     @property
     def active_products_count(self):
         return Product.query.filter_by(category_id=self.id, is_active=True).count()
-    
+
     def __repr__(self):
         return f'<Category {self.name}>'
 
@@ -294,40 +296,40 @@ class Product(db.Model):
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-    
+
     business = db.relationship('Business', back_populates='products')
     order_items = db.relationship('OrderItem', lazy=True)
-    
+
     @property
     def ganancia_unitaria(self):
         return self.price - self.precio_compra
-    
+
     @property
     def margen_ganancia(self):
         if self.precio_compra > 0:
             return ((self.price - self.precio_compra) / self.precio_compra) * 100
         return 0
-    
+
     @property
     def valor_inventario(self):
         return self.precio_compra * self.stock
-    
+
     @property
     def ganancia_potencial(self):
         return self.ganancia_unitaria * self.stock
-    
+
     @property
     def valor_venta_total(self):
         return self.price * self.stock
-    
+
     @property
     def is_low_stock(self):
         return self.stock < 10
-    
+
     @property
     def is_available(self):
         return self.is_active and self.stock > 0
-    
+
     @property
     def stock_status(self):
         if self.stock == 0:
@@ -338,7 +340,7 @@ class Product(db.Model):
             return 'medio'
         else:
             return 'completo'
-    
+
     @property
     def stock_status_color(self):
         colors = {
@@ -348,11 +350,11 @@ class Product(db.Model):
             'completo': 'success'
         }
         return colors.get(self.stock_status, 'secondary')
-    
+
     @property
     def business_name(self):
         return self.business.name if self.business else 'Sin negocio'
-    
+
     def __repr__(self):
         return f'<Product {self.name}>'
 
@@ -364,20 +366,20 @@ class OrderItem(db.Model):
     product_name = db.Column(db.String(200), nullable=True)
     quantity = db.Column(db.Integer, default=1)
     price_at_purchase = db.Column(db.Float, nullable=False)
-    
+
     order = db.relationship('Order', backref='order_items_list', lazy=True)
     product = db.relationship('Product', lazy=True)
-    
+
     @property
     def subtotal(self):
         return self.quantity * self.price_at_purchase
-    
+
     @property
     def ganancia_item(self):
         if self.product and self.product.precio_compra:
             return (self.price_at_purchase - self.product.precio_compra) * self.quantity
         return 0
-    
+
     def __repr__(self):
         return f'<OrderItem {self.quantity}x {self.product_name or self.product_id}>'
 
@@ -411,7 +413,7 @@ class Order(db.Model):
     @property
     def tracking_active(self):
         return self.status == 'shipped' and self.delivery_driver_id is not None
-    
+
     @property
     def items_list(self):
         return [{
@@ -421,7 +423,7 @@ class Order(db.Model):
             'subtotal': item.subtotal,
             'ganancia': item.ganancia_item
         } for item in self.order_items_list]
-    
+
     @property
     def status_label(self):
         labels = {
@@ -432,7 +434,7 @@ class Order(db.Model):
             'cancelled': '❌ Cancelado'
         }
         return labels.get(self.status, self.status)
-    
+
     @property
     def status_color(self):
         colors = {
@@ -443,7 +445,7 @@ class Order(db.Model):
             'cancelled': 'danger'
         }
         return colors.get(self.status, 'secondary')
-    
+
     @property
     def driver_arrived_label(self):
         if self.driver_arrived:
@@ -452,7 +454,7 @@ class Order(db.Model):
             return '🛵 En camino'
         else:
             return '⏳ Pendiente'
-    
+
     @property
     def ganancia_obtenida(self):
         ganancia = 0
@@ -460,17 +462,17 @@ class Order(db.Model):
             if item.product and item.product.precio_compra:
                 ganancia += (item.price_at_purchase - item.product.precio_compra) * item.quantity
         return ganancia
-    
+
     @property
     def platform_commission(self):
         if self.business and self.business.commission_rate:
             return self.total_amount * self.business.commission_rate
         return 0
-    
+
     @property
     def net_revenue_for_business(self):
         return self.total_amount - self.platform_commission
-    
+
     @property
     def distance_to_client(self):
         if self.delivery_latitude and self.client_latitude:
@@ -483,11 +485,11 @@ class Order(db.Model):
             except:
                 return None
         return None
-    
+
     @property
     def business_name(self):
         return self.business.name if self.business else 'Sin negocio'
-    
+
     def __repr__(self):
         return f'<Order #{self.id} - {self.status}>'
 
@@ -502,11 +504,11 @@ class DeliveryRequest(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
     accepted_at = db.Column(db.DateTime)
     expires_at = db.Column(db.DateTime)
-    
+
     order = db.relationship('Order', backref='delivery_request', lazy=True)
     business = db.relationship('Business', lazy=True)
     driver = db.relationship('User', foreign_keys=[driver_id], lazy=True)
-    
+
     @property
     def status_label(self):
         labels = {
@@ -516,7 +518,7 @@ class DeliveryRequest(db.Model):
             'expired': '⌛ Expirado'
         }
         return labels.get(self.status, self.status)
-    
+
     @property
     def status_color(self):
         colors = {
@@ -526,7 +528,7 @@ class DeliveryRequest(db.Model):
             'expired': 'secondary'
         }
         return colors.get(self.status, 'secondary')
-    
+
     def is_expired(self):
         if not self.expires_at:
             return False
@@ -534,7 +536,7 @@ class DeliveryRequest(db.Model):
         if expires.tzinfo is None:
             expires = expires.replace(tzinfo=timezone.utc)
         return datetime.now(timezone.utc) > expires
-    
+
     def __repr__(self):
         return f'<DeliveryRequest #{self.id} - {self.status}>'
 
@@ -546,10 +548,10 @@ class ChatMessage(db.Model):
     message = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
     is_read = db.Column(db.Boolean, default=False)
-    
+
     order = db.relationship('Order', backref='chat_messages', lazy=True)
     sender = db.relationship('User', foreign_keys=[sender_id], lazy=True)
-    
+
     def to_dict(self):
         sender_role = 'customer'
         if self.order:
@@ -561,14 +563,14 @@ class ChatMessage(db.Model):
                 sender_role = 'business'
             elif self.sender.business_id == self.order.business_id:
                 sender_role = 'business'
-        
+
         py_timezone = timezone(timedelta(hours=-3))
         if self.created_at.tzinfo is None:
             created_at_utc = self.created_at.replace(tzinfo=timezone.utc)
         else:
             created_at_utc = self.created_at.astimezone(timezone.utc)
         local_time = created_at_utc.astimezone(py_timezone)
-        
+
         return {
             'id': self.id,
             'order_id': self.order_id,
@@ -581,7 +583,7 @@ class ChatMessage(db.Model):
             'created_at_utc': created_at_utc.isoformat(),
             'is_read': self.is_read
         }
-    
+
     def __repr__(self):
         return f'<ChatMessage #{self.id} - Order {self.order_id}>'
 
@@ -594,10 +596,10 @@ class SupportChat(db.Model):
     is_from_admin = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     is_read = db.Column(db.Boolean, default=False)
-    
+
     business = db.relationship('Business', lazy=True)
     sender = db.relationship('User', foreign_keys=[sender_id], lazy=True)
-    
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -619,10 +621,10 @@ class DeliveryBusinessChat(db.Model):
     is_from_delivery = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     is_read = db.Column(db.Boolean, default=False)
-    
+
     order = db.relationship('Order', lazy=True)
     sender = db.relationship('User', foreign_keys=[sender_id], lazy=True)
-    
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -642,10 +644,10 @@ class UserMessage(db.Model):
     message = db.Column(db.Text, nullable=False)
     is_read = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    
+
     sender = db.relationship('User', foreign_keys=[sender_id], lazy=True)
     recipient = db.relationship('User', foreign_keys=[recipient_id], lazy=True, backref='received_messages')
-    
+
     def __repr__(self):
         return f'<UserMessage {self.id} - Para {self.recipient_id}>'
 
@@ -658,10 +660,10 @@ class Notification(db.Model):
     sent_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     is_sent = db.Column(db.Boolean, default=False)
-    
+
     sender = db.relationship('User', foreign_keys=[sent_by], lazy=True)
     recipients = db.relationship('NotificationRecipient', backref='notification', lazy=True, cascade='all, delete-orphan')
-    
+
     def __repr__(self):
         return f'<Notification {self.title}>'
 
@@ -672,8 +674,162 @@ class NotificationRecipient(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     is_read = db.Column(db.Boolean, default=False)
     read_at = db.Column(db.DateTime, nullable=True)
-    
+
     user = db.relationship('User', lazy=True)
-    
+
     def __repr__(self):
         return f'<NotificationRecipient {self.user_id}>'
+
+
+class CashSession(db.Model):
+    __tablename__ = 'cash_sessions'
+    __table_args__ = (
+        db.Index(
+            'uq_open_cash_session_per_business',
+            'business_id',
+            unique=True,
+            postgresql_where=db.text('closed_at IS NULL'),
+            sqlite_where=db.text('closed_at IS NULL')
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    business_id = db.Column(db.Integer, db.ForeignKey('businesses.id'), nullable=False, index=True)
+    opened_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    opened_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+    opening_amount = db.Column(db.Numeric(15, 2), nullable=False, default=Decimal('0.00'))
+
+    closed_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    closed_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
+    declared_cash = db.Column(db.Numeric(15, 2), nullable=True)
+    expected_cash_at_close = db.Column(db.Numeric(15, 2), nullable=True)
+    difference_at_close = db.Column(db.Numeric(15, 2), nullable=True)
+
+    # Snapshots de cierre
+    cash_sales_total = db.Column(db.Numeric(15, 2), nullable=True, default=Decimal('0.00'))
+    qr_sales_total = db.Column(db.Numeric(15, 2), nullable=True, default=Decimal('0.00'))
+    transfer_sales_total = db.Column(db.Numeric(15, 2), nullable=True, default=Decimal('0.00'))
+    card_sales_total = db.Column(db.Numeric(15, 2), nullable=True, default=Decimal('0.00'))
+    other_sales_total = db.Column(db.Numeric(15, 2), nullable=True, default=Decimal('0.00'))
+    manual_income_total = db.Column(db.Numeric(15, 2), nullable=True, default=Decimal('0.00'))
+    expense_total = db.Column(db.Numeric(15, 2), nullable=True, default=Decimal('0.00'))
+    withdrawal_total = db.Column(db.Numeric(15, 2), nullable=True, default=Decimal('0.00'))
+    total_sales = db.Column(db.Numeric(15, 2), nullable=True, default=Decimal('0.00'))
+
+    # Relaciones
+    business = db.relationship('Business', backref=db.backref('cash_sessions', lazy=True, order_by='desc(CashSession.opened_at)'))
+    opened_by = db.relationship('User', foreign_keys=[opened_by_user_id], lazy=True)
+    closed_by = db.relationship('User', foreign_keys=[closed_by_user_id], lazy=True)
+    movements = db.relationship('CashMovement', back_populates='cash_session', lazy=True, order_by='CashMovement.created_at.asc()')
+
+    @property
+    def is_open(self):
+        return self.closed_at is None
+
+    @property
+    def status_label(self):
+        return 'Abierta' if self.is_open else 'Cerrada'
+
+    @property
+    def difference_status(self):
+        if self.difference_at_close is None:
+            return None
+        if self.difference_at_close == Decimal('0.00') or self.difference_at_close == 0:
+            return 'cuadrada'
+        elif self.difference_at_close > 0:
+            return 'sobrante'
+        else:
+            return 'faltante'
+
+    @property
+    def difference_label(self):
+        status = self.difference_status
+        if status == 'cuadrada':
+            return 'Caja cuadrada'
+        elif status == 'sobrante':
+            return 'Sobrante'
+        elif status == 'faltante':
+            return 'Faltante'
+        return 'Sin cierre'
+
+    @property
+    def difference_badge_color(self):
+        status = self.difference_status
+        if status == 'cuadrada':
+            return 'success'
+        elif status == 'sobrante':
+            return 'info'
+        elif status == 'faltante':
+            return 'danger'
+        return 'secondary'
+
+    def format_dt(self, dt):
+        if not dt:
+            return '-'
+        py_tz = timezone(timedelta(hours=-3))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(py_tz).strftime('%d/%m/%Y %H:%M')
+
+    @property
+    def opened_at_formatted(self):
+        return self.format_dt(self.opened_at)
+
+    @property
+    def closed_at_formatted(self):
+        return self.format_dt(self.closed_at)
+
+    def __repr__(self):
+        return f'<CashSession #{self.id} Business {self.business_id} {"OPEN" if self.is_open else "CLOSED"}>'
+
+
+class CashMovement(db.Model):
+    __tablename__ = 'cash_movements'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    cash_session_id = db.Column(db.Integer, db.ForeignKey('cash_sessions.id'), nullable=False, index=True)
+    business_id = db.Column(db.Integer, db.ForeignKey('businesses.id'), nullable=False, index=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    type = db.Column(db.String(30), nullable=False)  # manual_income, expense, withdrawal
+    amount = db.Column(db.Numeric(15, 2), nullable=False)
+    description = db.Column(db.String(255), nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+
+    cash_session = db.relationship('CashSession', back_populates='movements')
+    business = db.relationship('Business', lazy=True)
+    created_by = db.relationship('User', foreign_keys=[created_by_user_id], lazy=True)
+
+    @property
+    def type_label(self):
+        labels = {
+            'manual_income': 'Ingreso manual',
+            'expense': 'Gasto',
+            'withdrawal': 'Retiro'
+        }
+        return labels.get(self.type, self.type)
+
+    @property
+    def type_badge_color(self):
+        colors = {
+            'manual_income': 'success',
+            'expense': 'danger',
+            'withdrawal': 'warning'
+        }
+        return colors.get(self.type, 'secondary')
+
+    @property
+    def type_sign(self):
+        return '+' if self.type == 'manual_income' else '-'
+
+    @property
+    def created_at_formatted(self):
+        if not self.created_at:
+            return '-'
+        py_tz = timezone(timedelta(hours=-3))
+        dt = self.created_at
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(py_tz).strftime('%d/%m/%Y %H:%M')
+
+    def __repr__(self):
+        return f'<CashMovement #{self.id} {self.type} {self.amount}>'
