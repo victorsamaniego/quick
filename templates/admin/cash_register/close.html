@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}Arqueo y Cierre de Caja - QuickGo{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2 class="fw-bold mb-1"><i class="bi bi-lock-fill text-danger"></i> Arqueo y Cierre de Caja</h2>
+                    <p class="text-muted mb-0">Sesión iniciada el {{ session.opened_at_formatted }} por {{ session.opened_by.username or session.opened_by.email }}</p>
+                </div>
+                <a href="{{ url_for('admin.cash_register') }}" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left"></i> Cancelar
+                </a>
+            </div>
+
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white py-3 border-0">
+                    <h5 class="fw-bold mb-0"><i class="bi bi-calculator text-warning"></i> Balance de Efectivo Esperado</h5>
+                </div>
+                <div class="card-body p-4">
+                    <div class="table-responsive mb-3">
+                        <table class="table table-sm mb-0">
+                            <tbody>
+                                <tr>
+                                    <td><i class="bi bi-wallet2 text-muted"></i> Fondo Inicial</td>
+                                    <td class="text-end fw-bold text-dark">+GS {{ "{:,.2f}".format(summary.opening_amount) }}</td>
+                                </tr>
+                                <tr>
+                                    <td><i class="bi bi-cash-coin text-success"></i> Ventas en Efectivo (Cobrado en local / contraentrega)</td>
+                                    <td class="text-end fw-bold text-success">+GS {{ "{:,.2f}".format(summary.cash_sales) }}</td>
+                                </tr>
+                                <tr>
+                                    <td><i class="bi bi-plus-circle text-primary"></i> Ingresos Manuales de Efectivo</td>
+                                    <td class="text-end fw-bold text-primary">+GS {{ "{:,.2f}".format(summary.manual_income) }}</td>
+                                </tr>
+                                <tr>
+                                    <td><i class="bi bi-dash-circle text-danger"></i> Gastos de Caja</td>
+                                    <td class="text-end fw-bold text-danger">-GS {{ "{:,.2f}".format(summary.expenses) }}</td>
+                                </tr>
+                                <tr>
+                                    <td><i class="bi bi-arrow-up-right-circle text-warning text-dark"></i> Retiros de Efectivo (Sangría)</td>
+                                    <td class="text-end fw-bold text-danger">-GS {{ "{:,.2f}".format(summary.withdrawals) }}</td>
+                                </tr>
+                                <tr class="table-warning fs-5 fw-bold border-top border-2 border-warning">
+                                    <td>Total Efectivo Esperado en Gaveta:</td>
+                                    <td class="text-end text-dark" id="expected_cash_val" data-expected="{{ summary.expected_cash }}">
+                                        GS {{ "{:,.2f}".format(summary.expected_cash) }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="p-3 bg-light rounded small text-muted">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span>Ventas por QR (bancario/billetera):</span>
+                            <strong>GS {{ "{:,.2f}".format(summary.qr_sales) }}</strong>
+                        </div>
+                        <div class="d-flex justify-content-between mb-1">
+                            <span>Ventas por Transferencia bancaria:</span>
+                            <strong>GS {{ "{:,.2f}".format(summary.transfer_sales) }}</strong>
+                        </div>
+                        <div class="d-flex justify-content-between fw-bold text-dark">
+                            <span>Total Ventas de la Sesión:</span>
+                            <span>GS {{ "{:,.2f}".format(summary.total_sales) }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- FORMULARIO DE ARQUEO -->
+            <div class="card border-0 shadow-sm border-top border-danger border-4">
+                <div class="card-body p-4">
+                    <h5 class="fw-bold mb-3"><i class="bi bi-cash-stack text-danger"></i> Conteo Real de Efectivo (Arqueo)</h5>
+                    <p class="text-muted small mb-4">
+                        Contá los billetes y monedas físicos en la caja e ingresá el monto total obtenido.
+                    </p>
+
+                    <form method="POST" action="{{ url_for('admin.close_cash_register') }}" id="closeRegisterForm">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                        <div class="mb-4">
+                            <label for="declared_cash" class="form-label fw-bold fs-5">
+                                Efectivo Físico Contado (GS) *
+                            </label>
+                            <div class="input-group input-group-lg">
+                                <span class="input-group-text bg-light fw-bold">GS</span>
+                                <input type="number" step="any" min="0" name="declared_cash" id="declared_cash"
+                                       class="form-control form-control-lg fw-bold text-end fs-3"
+                                       placeholder="0.00" required autofocus oninput="calcularDiferencia()">
+                            </div>
+                        </div>
+
+                        <!-- PANEL DINÁMICO DE DIFERENCIA -->
+                        <div id="differencePanel" class="p-3 rounded mb-4 text-center d-none">
+                            <span class="text-uppercase small fw-bold d-block mb-1">Resultado del Arqueo</span>
+                            <h3 class="fw-bold mb-1" id="differenceAmount">GS 0.00</h3>
+                            <span class="badge fs-6 px-3 py-2" id="differenceBadge">Caja cuadrada</span>
+                        </div>
+
+                        <div class="alert alert-warning border-0 small">
+                            <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                            <strong>Atención:</strong> Una vez cerrada la caja, el registro quedará guardado de manera histórica e inmutable. No se podrán modificar los montos ni agregar nuevos movimientos a esta sesión.
+                        </div>
+
+                        <div class="d-flex justify-content-between align-items-center gap-3 mt-4">
+                            <a href="{{ url_for('admin.cash_register') }}" class="btn btn-outline-secondary px-4">
+                                Cancelar
+                            </a>
+                            <button type="submit" class="btn btn-danger btn-lg px-5 fw-bold" onclick="return confirm('¿Confirmás el cierre definitivo de esta caja? Esta acción no se puede deshacer.');">
+                                <i class="bi bi-lock-fill"></i> Confirmar y Cerrar Caja
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function calcularDiferencia() {
+    const expected = parseFloat(document.getElementById('expected_cash_val').getAttribute('data-expected')) || 0;
+    const inputVal = document.getElementById('declared_cash').value;
+    const panel = document.getElementById('differencePanel');
+    const amountEl = document.getElementById('differenceAmount');
+    const badgeEl = document.getElementById('differenceBadge');
+
+    if (inputVal === '' || isNaN(parseFloat(inputVal))) {
+        panel.classList.add('d-none');
+        return;
+    }
+
+    const declared = parseFloat(inputVal);
+    const diff = declared - expected;
+    panel.classList.remove('d-none');
+
+    const formattedDiff = Math.abs(diff).toLocaleString('es-PY', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+    if (Math.abs(diff) < 0.01) {
+        panel.className = 'p-3 rounded mb-4 text-center bg-success bg-opacity-10 border border-success';
+        amountEl.className = 'fw-bold mb-1 text-success';
+        amountEl.textContent = 'GS 0.00';
+        badgeEl.className = 'badge bg-success fs-6 px-3 py-2';
+        badgeEl.textContent = '✅ Caja cuadrada (Sin diferencia)';
+    } else if (diff > 0) {
+        panel.className = 'p-3 rounded mb-4 text-center bg-info bg-opacity-10 border border-info';
+        amountEl.className = 'fw-bold mb-1 text-info';
+        amountEl.textContent = '+GS ' + formattedDiff;
+        badgeEl.className = 'badge bg-info text-dark fs-6 px-3 py-2';
+        badgeEl.textContent = '🔵 Sobrante en caja (+GS ' + formattedDiff + ')';
+    } else {
+        panel.className = 'p-3 rounded mb-4 text-center bg-danger bg-opacity-10 border border-danger';
+        amountEl.className = 'fw-bold mb-1 text-danger';
+        amountEl.textContent = '-GS ' + formattedDiff;
+        badgeEl.className = 'badge bg-danger fs-6 px-3 py-2';
+        badgeEl.textContent = '🔴 Faltante en caja (-GS ' + formattedDiff + ')';
+    }
+}
+</script>
+{% endblock %}
