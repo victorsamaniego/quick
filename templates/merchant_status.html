@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Estado de solicitud - QuickGo{% endblock %}
+{% block content %}
+<div class="container py-5">
+    <section class="card border-0 shadow-sm mx-auto text-center p-4 p-md-5" style="max-width: 640px; border-top: 5px solid #d4af37 !important;" aria-labelledby="approval-title">
+        <i class="bi {{ 'bi-clock-history' if business.approval_status == 'pending' else 'bi-file-earmark-x' }} display-3 text-warning mb-4" aria-hidden="true"></i>
+        <p class="text-muted">QUICKGO · SOLICITUD DE COMERCIO</p>
+        <h1 id="approval-title" class="h3 fw-bold">{{ 'PERFIL EN ESPERA DE APROBACIÓN' if business.approval_status == 'pending' else 'SOLICITUD NO APROBADA' }}</h1>
+        {% if business.approval_status == 'pending' %}
+        <p class="mt-3">Tu solicitud fue recibida correctamente. QuickGo está revisando tu solicitud.</p>
+        <p class="text-muted">Cuando sea aprobada por QuickGo tendrás acceso al panel de comercio, sujeto a las condiciones de suscripción correspondientes.</p>
+        {% else %}
+        <p class="mt-3">Tu solicitud fue revisada y no fue aprobada. Tu cuenta no tiene acceso al panel comercial.</p>
+        {% if business.rejection_reason %}<p class="alert alert-light">{{ business.rejection_reason }}</p>{% endif %}
+        {% endif %}
+        <form action="{{ url_for('main.logout') }}" method="POST" class="mt-3">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-warning px-4" type="submit">Cerrar sesión</button>
+        </form>
+    </section>
+</div>
+{% endblock %}

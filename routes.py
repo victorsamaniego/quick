@@ -1,3 +1,4 @@
+from product_images import product_catalog_image, product_original_image
 from uploads import validated_upload
 from security import is_safe_redirect_url, bounded_decimal, rollback_on_error
 from security import lock_user_role_change, validate_role_change, private_credential_response
@@ -150,9 +151,50 @@ def security_template_context():
 
 
 @main_bp.before_app_request
+def require_merchant_approval():
+    # One allowlist protects every operational HTTP endpoint, including APIs,
+    # subscription activation and merchant chat routes outside the admin blueprint.
+    allowed = {'static', 'main.merchant_status', 'main.logout', 'main.privacy',
+               'main.terms', 'main.login', 'main.login_transition', 'manifest', 'service_worker'}
+    if (current_user.is_authenticated and current_user.merchant_approval_required
+            and request.endpoint not in allowed):
+        if request.method != 'GET' or request.path.startswith('/api/'):
+            abort(403)
+        return redirect(url_for('main.merchant_status'))
+
+
+@main_bp.app_template_filter('product_catalog_image')
+def catalog_image_filter(value):
+    return product_catalog_image(value)
+
+
+@main_bp.app_template_filter('product_original_image')
+def original_image_filter(value):
+    return product_original_image(value)
+
+
+@main_bp.route('/privacy')
+def privacy():
+    return render_template('legal/privacy.html')
+
+
+@main_bp.route('/terms')
+def terms():
+    return render_template('legal/terms.html')
+
+
+@main_bp.route('/merchant/status')
+@login_required
+def merchant_status():
+    if not current_user.merchant_approval_required:
+        return redirect(url_for('main.dashboard'))
+    return render_template('merchant_status.html', business=current_user.business)
+
+
+@main_bp.before_app_request
 def limit_input_text():
     limits = {'message': 2000, 'title': 200, 'name': 200, 'description': 10000,
-              'shipping_address': 500, 'shipping_reference': 500, 'search': 200,
+              'shipping_address': 500, 'shipping_reference': 500, 'search': 200, 'q': 200,
               'identifier': 120, 'username': 80, 'email': 120, 'phone': 20,
               'password': 1024, 'new_password': 1024, 'confirm_password': 1024,
               'answer': 500, 'written_answer': 500}
@@ -303,7 +345,7 @@ def leer_cobertura_negocio(form):
 def obtener_negocios_cercanos(user_lat, user_lon):
     """Retorna lista de negocios dentro del radio de delivery del cliente"""
     negocios_cercanos = []
-    all_businesses = Business.query.filter_by(is_active=True).all()
+    all_businesses = Business.query.filter_by(is_active=True, approval_status='approved').all()
 
     try:
         user_lat, user_lon = validar_coordenadas(user_lat, user_lon)
@@ -411,6 +453,8 @@ def register():
             phone=form.phone.data,
             is_active=True,
             security_question_id=form.security_question_id.data,
+            legal_accepted_at=datetime.now(timezone.utc),
+            legal_version='2026-09-22',
             is_admin=es_comerciante
         )
         user.set_password(form.password.data)
@@ -426,10 +470,11 @@ def register():
                 description="Solicitud de comerciante pendiente de aprobación",
                 phone=user.phone,
                 is_active=False,
+                approval_status='pending',
                 subscription_status='pending'
             )
-            user.business_id = new_business.id
             db.session.add(new_business)
+            user.business = new_business
             db.session.commit()
 
             flash('📋 Tu solicitud de comerciante fue enviada. El Super Admin la revisará y activará tu cuenta pronto.', 'info')
@@ -444,6 +489,8 @@ def register():
 
 
 def _login_destination(user):
+    if user.merchant_approval_required:
+        return url_for('main.merchant_status')
     # Keep the login's existing role precedence and default destinations.
     if user.is_super_admin:
         return url_for('super_admin.dashboard')
@@ -455,6 +502,8 @@ def _login_destination(user):
 
 
 def _transition_target(value, user):
+    if user.merchant_approval_required:
+        return url_for('main.merchant_status')
     if not is_safe_redirect_url(value):
         return _login_destination(user)
     parsed = urlsplit(value)
@@ -562,6 +611,16 @@ def dashboard():
     )
 
 
+def catalog_products_query(business_ids, search=None, category_id=None):
+    query = Product.query.filter(Product.is_active.is_(True), Product.stock > 0,
+                                 Product.business_id.in_(business_ids))
+    if category_id:
+        query = query.filter_by(category_id=category_id)
+    if search:
+        query = query.filter(Product.name.ilike(f'%{search}%'))
+    return query.order_by(Product.created_at.desc(), Product.id.desc())
+
+
 @main_bp.route('/products')
 def products():
     if current_user.is_authenticated and current_user.is_admin:
@@ -591,19 +650,7 @@ def products():
                               current_category=category_id,
                               search_term=search)
 
-    query = Product.query.filter(
-        Product.is_active == True,
-        Product.stock > 0,
-        Product.business_id.in_(business_ids)
-    )
-
-    if category_id:
-        query = query.filter_by(category_id=category_id)
-
-    if search:
-        query = query.filter(Product.name.ilike(f'%{search}%'))
-
-    products = query.order_by(Product.created_at.desc()).all()
+    products = catalog_products_query(business_ids, search, category_id).all()
     categories = Category.query.all()
 
     return render_template('products.html',
@@ -2599,24 +2646,93 @@ def calculate_delivery_fee():
         })
 
 
-@main_bp.route('/api/products/search')
+@main_bp.route('/api/products/search', methods=['GET'])
+@limiter.limit('120 per minute')
 def api_search_products():
-    query = request.args.get('q', '')
+    query = request.args.get('q', '').strip()
     if len(query) < 2:
         return jsonify([])
-
-    products = Product.query.filter(
-        Product.is_active == True,
-        Product.stock > 0,
-        Product.name.ilike(f'%{query}%')
-    ).limit(10).all()
-
+    nearby = obtener_negocios_cercanos(session.get('user_latitude', -25.2637),
+                                       session.get('user_longitude', -57.5759))
+    products = catalog_products_query([n['business'].id for n in nearby], query,
+                                      request.args.get('category', type=int)).limit(10).all()
     return jsonify([{
-        'id': p.id,
-        'name': p.name,
-        'price': p.price,
-        'image': p.image_url or '/static/images/placeholder.png'
+        'id': p.id, 'name': p.name, 'price': p.price,
+        'image': product_catalog_image(p.image_url),
+        'image_original': product_original_image(p.image_url),
+        'business_name': p.business.name,
+        'url': url_for('main.product_detail', product_id=p.id),
     } for p in products])
+
+
+@super_admin_bp.route('/merchant-requests')
+@login_required
+@super_admin_required
+def merchant_requests():
+    status = request.args.get('status', 'pending')
+    if status not in ('pending', 'approved', 'rejected'):
+        abort(400)
+    page = Business.query.filter_by(approval_status=status).order_by(
+        Business.created_at.desc(), Business.id.desc()).paginate(
+            page=max(1, request.args.get('page', 1, type=int)), per_page=30, error_out=False)
+    owners = {}
+    for owner in User.query.filter(User.business_id.in_([b.id for b in page.items]),
+                                   User.is_admin.is_(True)).order_by(User.id).all():
+        owners.setdefault(owner.business_id, owner)
+    return render_template('super_admin/merchant_requests.html', page=page, status=status, owners=owners)
+
+
+@super_admin_bp.route('/merchant-requests/<int:business_id>')
+@login_required
+@super_admin_required
+def merchant_request_detail(business_id):
+    business = db.session.get(Business, business_id)
+    if business is None:
+        abort(404)
+    owner = User.query.filter_by(business_id=business.id, is_admin=True).order_by(User.id).first()
+    return render_template('super_admin/merchant_request_detail.html', business=business, owner=owner)
+
+
+def decide_merchant_request(business_id, approved):
+    reason = request.form.get('rejection_reason', '').strip()
+    if len(reason) > 300:
+        abort(400)
+    business = db.session.get(Business, business_id)
+    if business is None:
+        abort(404)
+    if not User.query.filter_by(business_id=business.id, is_admin=True).first():
+        abort(409, description='La solicitud no tiene comerciante asociado.')
+    now = datetime.now(timezone.utc)
+    changes = dict(approval_status='approved' if approved else 'rejected', is_active=approved)
+    if approved:
+        changes.update(approved_at=now, approved_by_user_id=current_user.id)
+    else:
+        changes.update(rejected_at=now, rejected_by_user_id=current_user.id,
+                       rejection_reason=reason or None)
+    # Conditional update makes concurrent/repeated decisions conflict instead of overwrite.
+    count = Business.query.filter_by(id=business_id, approval_status='pending').update(changes)
+    if count != 1:
+        db.session.rollback()
+        abort(409, description='Esta solicitud ya fue resuelta.')
+    db.session.commit()
+    flash('Solicitud aprobada.' if approved else 'Solicitud rechazada.', 'success')
+    return redirect(url_for('super_admin.merchant_request_detail', business_id=business_id))
+
+
+@super_admin_bp.route('/merchant-requests/<int:business_id>/approve', methods=['POST'])
+@login_required
+@super_admin_required
+@rollback_on_error
+def approve_merchant(business_id):
+    return decide_merchant_request(business_id, True)
+
+
+@super_admin_bp.route('/merchant-requests/<int:business_id>/reject', methods=['POST'])
+@login_required
+@super_admin_required
+@rollback_on_error
+def reject_merchant(business_id):
+    return decide_merchant_request(business_id, False)
 
 
 # ============ SUPER ADMIN ROUTES ============
@@ -2684,7 +2800,8 @@ def dashboard():
         low_performers=low_performers,
         recent_orders=recent_orders,
         recent_businesses=recent_businesses,
-        messages_sent_count=messages_sent_count
+        messages_sent_count=messages_sent_count,
+        pending_merchant_count=Business.query.filter_by(approval_status='pending').count()
     )
 
 

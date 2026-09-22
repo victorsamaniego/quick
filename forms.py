@@ -16,6 +16,9 @@ from models import User, SecurityQuestion
 # REGISTRO (con pregunta de seguridad, SIN OTP por email)
 # ============================================================
 class RegistrationForm(FlaskForm):
+    accept_legal = BooleanField('Aceptación de términos y privacidad', validators=[
+        DataRequired(message='Debés aceptar los Términos y Condiciones y la Política de Privacidad.')
+    ])
     account_type = SelectField(
         'Tipo de cuenta',
         choices=[

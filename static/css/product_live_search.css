@@ -1,0 +1,7 @@
+.product-search-results { position: absolute; top: calc(100% + 8px); left: 0; right: 0; min-width: 260px; max-height: 65vh; overflow-y: auto; z-index: 1050; background: #fff; color: #212529; border: 1px solid #ddd; border-radius: 12px; }
+.product-search-result { display: flex; align-items: center; gap: 12px; padding: 12px; color: #212529; text-decoration: none; border-bottom: 1px solid #eee; }
+.product-search-result:focus, .product-search-result:hover { background: #fff6d7; outline: 2px solid #856018; outline-offset: -2px; }
+.product-search-result img { width: 52px; height: 52px; flex: 0 0 52px; object-fit: contain; padding: 4px; background: #fff; }
+.product-search-result small { display: block; }
+.product-search-result span { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 576px) { #product-search-form { width: 100%; } .product-search-results { min-width: 0; } }

@@ -1,0 +1,7 @@
+{% macro product_image(value, name, height=140, classes='') -%}
+<img src="{{ value|product_original_image }}" data-catalog-src="{{ value|product_catalog_image }}"
+     data-original-src="{{ value|product_original_image }}"
+     data-placeholder-src="{{ url_for('static', filename='images/product-placeholder.svg') }}"
+     class="product-catalog-image {{ classes }}" alt="{{ name }}" loading="lazy"
+     style="width: 100%; height: {{ height }}px; object-fit: contain; padding: 12px; background: #fff;">
+{%- endmacro %}

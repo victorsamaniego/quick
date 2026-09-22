@@ -11,6 +11,13 @@
         </div>
     </div>
     
+    <a href="{{ url_for('super_admin.merchant_requests') }}" class="card border-warning shadow-sm mb-4 text-decoration-none" aria-label="Solicitudes de comerciantes: {{ pending_merchant_count }} pendientes">
+        <div class="card-body d-flex align-items-center gap-3">
+            <i class="bi bi-bell-fill fs-2 text-warning" aria-hidden="true"></i>
+            <div><h2 class="h5 mb-1">SOLICITUDES DE COMERCIANTES</h2><span>{{ pending_merchant_count }} pendientes de revisión</span></div>
+            <span class="badge rounded-pill bg-danger ms-auto fs-5">{{ pending_merchant_count }}</span>
+        </div>
+    </a>
     <!-- Tarjetas de Estadísticas -->
     <div class="row g-3 mb-4">
         <div class="col-md-3">

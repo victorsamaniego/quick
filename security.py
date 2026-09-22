@@ -90,7 +90,7 @@ def validate_product_access(product, location=None, *, allow_closed=False, requi
     business = db.session.get(Business, product.business_id) if product.business_id else None
     if business and not business.is_open and not allow_closed:
         abort(400, description='El negocio está cerrado y no acepta pedidos en este momento.')
-    if not business or not business.is_active or not product.is_active or (require_stock and (product.stock or 0) <= 0):
+    if not business or business.approval_status != 'approved' or not business.is_active or not product.is_active or (require_stock and (product.stock or 0) <= 0):
         abort(400, description='Producto o negocio no disponible.')
     if not current_app.config.get('SECURITY_ENFORCE_COVERAGE', False):
         return

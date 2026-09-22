@@ -1,9 +1,13 @@
 {% extends "base.html" %}
+{% from "macros/product_image.html" import product_image %}
 {% block body_class %}storefront-modern{% endblock %}
 {% block title %}Productos - QuickGo{% endblock %}
 
 
 
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/product_live_search.css') }}">
+{% endblock %}
 {% block content %}
 <script src="{{ url_for('static', filename='js/storefront_status.js') }}" defer></script>
 <div class="container quickgo-catalog">
@@ -55,9 +59,12 @@
     <!-- HEADER DE PRODUCTOS -->
     <div class="catalog-toolbar d-flex justify-content-between align-items-center mb-3 flex-wrap gap-3">
         <h2 class="fw-bold mb-2 mb-md-0"><i class="bi bi-bag"></i> Productos disponibles</h2>
-        <form class="catalog-search d-flex" method="GET" action="{{ url_for('main.products') }}">
-            <input type="text" name="search" class="form-control me-2" 
+        <form id="product-search-form" data-search-url="{{ url_for('main.api_search_products') }}" class="catalog-search d-flex position-relative" method="GET" action="{{ url_for('main.products') }}">
+            <input id="product-search" type="text" name="search" maxlength="200" autocomplete="off" aria-controls="product-search-results" aria-expanded="false" class="form-control me-2"
                    aria-label="Buscar productos" placeholder="¿Qué estás buscando?" value="{{ search_term or '' }}">
+            {% if current_category %}<input type="hidden" name="category" value="{{ current_category }}">{% endif %}
+            <div id="product-search-results" class="product-search-results shadow" hidden></div>
+            <span id="product-search-status" class="visually-hidden" role="status" aria-live="polite"></span>
             <button type="submit" class="btn btn-warning" aria-label="Buscar">
                 <i class="bi bi-search"></i>
             </button>
@@ -70,23 +77,7 @@
         {% for product in products %}
         <div class="col-6 col-md-3 col-xl-2">
             <div class="card h-100 border-0 shadow-sm product-card">
-                {% if product.image_url %}
-                    {% if product.image_url.startswith('uploads/') %}
-                        <img src="{{ product.image_url|smart_image }}" 
-                             class="card-img-top" alt="{{ product.name }}" 
-                             style="height: 140px; object-fit: contain; padding: 12px; background: linear-gradient(135deg, #faf6ea, #e8d7a4);"
-                             onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/product-placeholder.svg') }}';">
-                    {% else %}
-                        <img src="{{ product.image_url|smart_image }}" 
-                             class="card-img-top" alt="{{ product.name }}" 
-                             style="height: 140px; object-fit: contain; padding: 12px; background: linear-gradient(135deg, #faf6ea, #e8d7a4);"
-                             onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/product-placeholder.svg') }}';">
-                    {% endif %}
-                {% else %}
-                    <div class="bg-light d-flex align-items-center justify-content-center" style="height: 140px; background: #f2e7ca;">
-                        <i class="bi bi-image text-muted fs-1"></i>
-                    </div>
-                {% endif %}
+                {{ product_image(product.image_url, product.name, 140, 'card-img-top') }}
                 
                 <div class="card-body p-2">
                     {% if product.business %}
@@ -134,6 +125,7 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="{{ url_for('static', filename='js/product_live_search.js') }}" defer></script>
 <script>
 function getUserLocation() {
     if (!navigator.geolocation) {
