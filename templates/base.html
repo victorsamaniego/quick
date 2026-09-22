@@ -2,6 +2,7 @@
 {% set internal_theme = current_user.is_authenticated and request.endpoint not in ['main.index', 'main.products', 'main.product_detail', 'main.login', 'main.register'] %}
 <html lang="es" data-theme="{{ current_theme | default('gold-classic') if internal_theme else 'gold' }}">
 <head>
+    <script src="{{ url_for('static', filename='js/product_images.js') }}"></script>
     <meta id="csrf-token" name="csrf-token" content="{{ csrf_token() }}">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -37,6 +38,7 @@
     <link href="{{ url_for('static', filename='css/themes.css') }}" rel="stylesheet">
 </head>
 <body class="quickgo-shell {{ 'qg-internal theme-' ~ (current_theme | default('gold-classic')) if internal_theme else 'theme-gold' }} {{ 'storefront-modern' if request.blueprint == 'super_admin' or request.endpoint in ['main.my_notifications', 'main.view_user_notification'] else '' }} {% block body_class %}{% endblock %}">
+    {% set awaiting_approval = current_user.is_authenticated and current_user.merchant_approval_required %}
     <!-- Navbar -->
     <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm sticky-top">
         <div class="container">
@@ -44,6 +46,7 @@
                 <span class="quickgo-mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="25" height="25"><path fill="currentColor" d="M14 2 4 14h7l-1 8L21 9h-8z"/></svg></span>
                 <span class="fw-bold text-dark">Quick<span class="text-warning">Go</span></span>
             </a>
+            {% if not awaiting_approval %}
             <button class="navbar-toggler" aria-label="Abrir navegación" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
@@ -135,6 +138,7 @@
                     {% endif %}
                 </div>
             </div>
+            {% endif %}
         </div>
     </nav>
     
@@ -168,7 +172,7 @@
         {% block content %}{% endblock %}
     </main>
     
-    {% if current_user.is_authenticated %}
+    {% if current_user.is_authenticated and not awaiting_approval %}
     <aside class="container mb-3" aria-label="Notificaciones del sistema">
         <button id="push-enable" type="button" class="btn btn-outline-primary" disabled>🔔 Activar notificaciones</button>
         <button id="push-disable" type="button" class="btn btn-outline-secondary" hidden>Desactivar notificaciones</button>
@@ -177,6 +181,10 @@
     {% endif %}
     <!-- Footer -->
     <footer class="bg-dark text-white py-4 mt-auto">
+        <nav class="text-center mb-3" aria-label="Información legal">
+            <a class="text-white me-3" href="{{ url_for('main.privacy') }}">Política de Privacidad</a>
+            <a class="text-white" href="{{ url_for('main.terms') }}">Términos y Condiciones</a>
+        </nav>
         <div class="container">
             <p class="text-center small text-white-50 mb-0">&copy; {{ current_year }} QuickGo. Todos los derechos reservados.</p>
             <p class="text-center small text-white-50">Tu marketplace de confianza - Pods, Bebidas y más</p>
@@ -184,6 +192,7 @@
     </footer>
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    {% if not awaiting_approval %}
     <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
     <script>
     window.realtimeUser = {% if current_user.is_authenticated %}{
@@ -195,6 +204,7 @@
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     {% if current_user.is_authenticated and not current_user.is_super_admin %}<script src="{{ url_for('static', filename='js/notifications.js') }}"></script>{% endif %}
     {% if current_user.is_authenticated %}<script src="{{ url_for('static', filename='js/web_push.js') }}"></script>{% endif %}
+    {% endif %}
     {% block extra_js %}{% endblock %}
     
     <!-- PWA Install Prompt -->

@@ -10,7 +10,7 @@ def socket_budget(event, limit):
     def decorate(view):
         @wraps(view)
         def guarded(*args, **kwargs):
-            if not current_user.is_authenticated or not current_user.is_active:
+            if not current_user.is_authenticated or not current_user.is_active or current_user.merchant_approval_required:
                 return {'success': False}
             state = current_app.extensions.setdefault('socket_budgets', {'lock': Lock(), 'entries': {}})
             now = monotonic()

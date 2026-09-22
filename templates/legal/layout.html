@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}{{ legal_title }}{% endblock %}
+{% block content %}
+<article class="container py-4" style="max-width: 860px; line-height: 1.8;">
+    <p class="text-muted">QUICKGO · INFORMACIÓN LEGAL · Versión 22/09/2026</p>
+    <h1 class="h2 mb-4">{{ legal_title }}</h1>
+    {# Revisión por asesor jurídico obligatoria antes del lanzamiento comercial definitivo.
+       Validar identidad del responsable, contacto, bases jurídicas, plazos y políticas comerciales. #}
+    <p class="alert alert-light border">Texto preparado para revisión jurídica. La identidad legal del operador, el canal público de contacto y las condiciones comerciales señaladas deben confirmarse antes del lanzamiento comercial definitivo.</p>
+    {% block legal_content %}{% endblock %}
+    <h2 class="h4 mt-4">Contacto</h2>
+    <p>Los comerciantes habilitados pueden utilizar el soporte de su panel. Para consultas legales y ejercicio de derechos de cualquier usuario, el operador debe publicar un canal accesible sin cuenta antes del lanzamiento definitivo. <strong>Pendiente de revisión: razón social, domicilio y contacto público del responsable de QuickGo.</strong></p>
+</article>
+{% endblock %}

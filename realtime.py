@@ -14,14 +14,14 @@ socketio = SocketIO()
 
 
 def can_access_order(user, order):
-    return bool(user and user.is_authenticated and order and (
+    return bool(user and user.is_authenticated and not user.merchant_approval_required and order and (
         user.id == order.user_id or
         (user.is_delivery and user.id == order.delivery_driver_id) or
         (user.is_admin and user.business_id == order.business_id)))
 
 
 def allowed_room(user, room):
-    if not user or not user.is_authenticated or not user.is_active or not isinstance(room, str) or len(room) > 96:
+    if not user or not user.is_authenticated or not user.is_active or user.merchant_approval_required or not isinstance(room, str) or len(room) > 96:
         return False
     if room == 'admin':
         return bool(user.is_super_admin)
@@ -110,7 +110,7 @@ def register_realtime(app):
 
     @socketio.on('connect')
     def connect(auth=None):
-        if not current_user.is_authenticated or not current_user.is_active:
+        if not current_user.is_authenticated or not current_user.is_active or current_user.merchant_approval_required:
             return False
         socketio.emit('realtime_ready', {'live_since': time.time()}, to=request.sid)
         app.extensions['realtime_identities'][request.sid] = current_user.id

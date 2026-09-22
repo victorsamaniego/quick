@@ -23,6 +23,8 @@ class User(UserMixin, db.Model):
     is_super_admin = db.Column(db.Boolean, default=False)
     is_delivery = db.Column(db.Boolean, default=False)
     business_id = db.Column(db.Integer, db.ForeignKey('businesses.id'), nullable=True)
+    legal_accepted_at = db.Column(db.DateTime, nullable=True)
+    legal_version = db.Column(db.String(20), nullable=True)
     theme_color = db.Column(db.String(20), default='gold')
     latitude = db.Column(db.Float)
     longitude = db.Column(db.Float)
@@ -32,8 +34,13 @@ class User(UserMixin, db.Model):
     orders = db.relationship('Order', backref='customer', lazy=True, foreign_keys='Order.user_id')
     delivery_orders = db.relationship('Order', backref='driver', lazy=True, foreign_keys='Order.delivery_driver_id')
     otp_codes = db.relationship('OTPCode', backref='user', lazy=True, cascade='all, delete-orphan')
-    business = db.relationship('Business', back_populates='admin_user', lazy=True)
+    business = db.relationship('Business', back_populates='admin_user', foreign_keys=[business_id], lazy=True)
     received_notifications = db.relationship('NotificationRecipient', foreign_keys='NotificationRecipient.user_id', lazy=True)
+
+    @property
+    def merchant_approval_required(self):
+        return bool(self.is_admin and not self.is_super_admin and self.business
+                    and self.business.approval_status != 'approved')
 
     def get_id(self):
         from auth_identity import authentication_id
@@ -173,6 +180,18 @@ class SecurityQuestion(db.Model):
 
 class Business(db.Model):
     __tablename__ = 'businesses'
+    __table_args__ = (db.CheckConstraint(
+        "approval_status IN ('pending', 'approved', 'rejected')",
+        name='ck_business_approval_status'),)
+    # Legacy and Super Admin-created businesses retain their existing behavior.
+    # Public registration must explicitly set pending and is_active=False.
+    approval_status = db.Column(db.String(20), nullable=False, default='approved',
+                                server_default='approved', index=True)
+    approved_at = db.Column(db.DateTime, nullable=True)
+    approved_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id', use_alter=True, name='businesses_approved_by_user_id_fkey'), nullable=True)
+    rejected_at = db.Column(db.DateTime, nullable=True)
+    rejected_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id', use_alter=True, name='businesses_rejected_by_user_id_fkey'), nullable=True)
+    rejection_reason = db.Column(db.String(300), nullable=True)
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     name = db.Column(db.String(100), nullable=False)
     slug = db.Column(db.String(100), unique=True, nullable=False, index=True)
@@ -204,7 +223,7 @@ class Business(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
-    admin_user = db.relationship('User', back_populates='business', lazy=True, uselist=False)
+    admin_user = db.relationship('User', back_populates='business', foreign_keys='User.business_id', lazy=True, uselist=False)
     products = db.relationship('Product', back_populates='business', lazy=True, cascade='all, delete-orphan')
     orders = db.relationship('Order', back_populates='business', lazy=True)
     categories = db.relationship('Category', lazy=True)

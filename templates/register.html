@@ -172,6 +172,14 @@
                             {% endfor %}
                         </div>
                         
+                        <div class="form-check mb-4">
+                            {{ form.accept_legal(class="form-check-input", required=True) }}
+                            <label class="form-check-label" for="accept_legal">He leído y acepto los
+                                <a href="{{ url_for('main.terms') }}" target="_blank" rel="noopener">Términos y Condiciones</a> y la
+                                <a href="{{ url_for('main.privacy') }}" target="_blank" rel="noopener">Política de Privacidad</a>.
+                            </label>
+                            {% for error in form.accept_legal.errors %}<div class="text-danger small" role="alert">{{ error }}</div>{% endfor %}
+                        </div>
                         <button type="submit" class="btn btn-warning w-100 fw-semibold py-2" id="submitBtn" disabled>
                             <i class="bi bi-person-plus"></i> Crear Cuenta
                         </button>
