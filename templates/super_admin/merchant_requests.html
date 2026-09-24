@@ -11,11 +11,11 @@
     </nav>
     <p>{{ page.total }} solicitudes en este estado</p>
     <div class="table-responsive"><table class="table align-middle">
-        <thead><tr><th>Usuario / email / teléfono</th><th>Negocio</th><th>Registro</th><th>Estado</th><th>Acciones</th></tr></thead>
+        <thead><tr><th>Usuario / email / teléfono</th><th>Tipo de solicitud</th><th>Registro</th><th>Estado</th><th>Acciones</th></tr></thead>
         <tbody>{% for business in page.items %}<tr>
             {% set owner = owners.get(business.id) %}
             <td>{% if owner %}{{ owner.username }}<br>{{ owner.email }}<br>{{ owner.phone }}{% else %}Sin usuario asociado{% endif %}</td>
-            <td>{{ business.name }}</td><td>{{ business.created_at.strftime('%d/%m/%Y %H:%M') if business.created_at else 'Sin fecha' }} UTC</td>
+            <td><strong>Solicitud de comerciante</strong><br><span class="badge bg-warning text-dark">COMERCIANTE</span></td><td>{{ owner.created_at.strftime('%d/%m/%Y %H:%M') if owner and owner.created_at else 'Sin fecha' }} UTC</td>
             <td><span class="badge {{ 'bg-warning text-dark' if status == 'pending' else 'bg-secondary' }}">{{ status }}</span></td>
             <td><a class="btn btn-outline-dark btn-sm" href="{{ url_for('super_admin.merchant_request_detail', business_id=business.id) }}">VER SOLICITUD</a></td>
         </tr>{% else %}<tr><td colspan="5">No hay solicitudes en este estado.</td></tr>{% endfor %}</tbody>

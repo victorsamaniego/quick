@@ -188,7 +188,9 @@ def terms():
 def merchant_status():
     if not current_user.merchant_approval_required:
         return redirect(url_for('main.dashboard'))
-    return render_template('merchant_status.html', business=current_user.business)
+    response = current_app.make_response(render_template('merchant_status.html', business=current_user.business))
+    response.headers['Cache-Control'] = 'no-store, private'
+    return response
 
 
 @main_bp.before_app_request
@@ -519,7 +521,7 @@ def _transition_target(value, user):
 @limiter.limit("5 per minute")
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for('main.dashboard'))
+        return redirect(_login_destination(current_user))
 
     if request.method == 'POST':
         session.pop('post_login_transition', None)
@@ -538,6 +540,8 @@ def login():
 
             privileged = user.is_admin or user.is_delivery or user.is_super_admin
             login_user(user, remember=form.remember_me.data and not privileged)
+            if user.merchant_approval_required:
+                return redirect(url_for('main.merchant_status'))
             flash(f' 👋 ¡Bienvenido de nuevo, {user.display_name}!', 'success')
 
             session['post_login_transition'] = {

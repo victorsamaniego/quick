@@ -4,12 +4,14 @@
 <div class="container py-3" style="max-width: 800px;">
     <a href="{{ url_for('super_admin.merchant_requests') }}">Volver a solicitudes</a>
     <section class="card shadow-sm p-4 mt-3">
-        <h1 class="h3">{{ business.name }}</h1>
+        <h1 class="h3">Solicitud de Comerciante — {{ owner.username if owner else "Sin usuario asociado" }}</h1>
+        <p>El usuario solicita habilitación para vender productos en QuickGo.</p>
         <dl class="row mt-3">
+            <dt class="col-sm-4">Tipo de solicitud</dt><dd class="col-sm-8"><span class="badge bg-warning text-dark">COMERCIANTE</span></dd>
             <dt class="col-sm-4">Usuario</dt><dd class="col-sm-8">{{ owner.username if owner else 'Sin usuario asociado' }}</dd>
             <dt class="col-sm-4">Email</dt><dd class="col-sm-8">{{ owner.email if owner else '—' }}</dd>
             <dt class="col-sm-4">Teléfono</dt><dd class="col-sm-8">{{ owner.phone if owner else business.phone }}</dd>
-            <dt class="col-sm-4">Registro</dt><dd class="col-sm-8">{{ owner.created_at if owner else business.created_at }} UTC</dd>
+            <dt class="col-sm-4">Fecha de registro</dt><dd class="col-sm-8">{{ owner.created_at if owner else business.created_at }} UTC</dd>
             <dt class="col-sm-4">Estado</dt><dd class="col-sm-8">{{ business.approval_status }}</dd>
             {% if business.approved_at %}<dt class="col-sm-4">Aprobación</dt><dd class="col-sm-8">{{ business.approved_at }} UTC · Super Admin #{{ business.approved_by_user_id }}</dd>{% endif %}
             {% if business.rejected_at %}<dt class="col-sm-4">Rechazo</dt><dd class="col-sm-8">{{ business.rejected_at }} UTC · Super Admin #{{ business.rejected_by_user_id }}<br>{{ business.rejection_reason or 'Sin motivo adicional' }}</dd>{% endif %}

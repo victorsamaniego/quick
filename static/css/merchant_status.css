@@ -1,0 +1,51 @@
+:root { color-scheme: dark; --gold: #d4af37; --gold-bright: #f5d77a; --gold-dark: #b98b1d; --ink: #121212; }
+* { box-sizing: border-box; }
+body { margin: 0; background: radial-gradient(ellipse at 50% 38%, #302a1a 0, #171613 42%, var(--ink) 75%); color: #f7f4eb; font-family: Inter, system-ui, sans-serif; }
+.waiting-shell { min-height: 100vh; min-height: 100svh; width: min(100%, 1100px); margin: auto; padding: 28px 24px 22px; display: flex; flex-direction: column; align-items: center; }
+.waiting-header { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: 22px; font-weight: 750; }
+.brand-gold { color: var(--gold); }
+.header-caption, .eyebrow, footer { font-size: 10px; letter-spacing: .18em; font-weight: 600; color: #c5bdab; }
+.waiting-card { width: min(100%, 620px); margin: auto; padding: 30px 36px; text-align: center; }
+.eyebrow { margin: 0; color: var(--gold-bright); }
+.brand-stage { position: relative; width: min(100%, 360px); height: 220px; font-size: 36px; margin: 10px auto 18px; isolation: isolate; }
+.brand-stage::before { content: ""; position: absolute; inset: 24px 36px; border-radius: 50%; background: radial-gradient(ellipse, #e6c66a2b, transparent 70%); }
+.orbit-track { position: absolute; inset: 54px 4px; border: 1px solid #d4af3738; border-radius: 50%; transform: rotate(-15deg); }
+.brand-core, .brand-satellite { position: absolute; left: 50%; top: 50%; font-weight: 800; letter-spacing: -.06em; color: var(--gold-bright); -webkit-text-stroke: .6px #d4af37; text-shadow: 0 1px 0 #f5d77a80, 0 0 24px #d4af3730; }
+.brand-core { font-size: 64px; transform: translate(-50%, -50%); z-index: 1; }
+.brand-satellite { font-size: 1em; transform: translate(calc(-50% + 118px), -50%); z-index: 2; }
+.is-pending .brand-core { animation: brand-color 14s ease-in-out infinite; }
+.is-pending .brand-satellite { animation: satellite-orbit 10s linear infinite, brand-color 14s ease-in-out infinite; }
+@keyframes brand-color { 0%, 100% { color: var(--ink); } 25% { color: var(--gold); } 50% { color: var(--gold-bright); } 75% { color: var(--gold-dark); } }
+/* Offset-path keeps a smooth elliptical orbit; type size adds depth around the fixed core. */
+.is-pending .brand-satellite { offset-path: ellipse(118px 65px at 50% 50%); offset-rotate: 0deg; left: 0; top: 0; transform: none; }
+@keyframes satellite-orbit {
+    0% { offset-distance: 0%; font-size: .9em; z-index: 2; }
+    100% { offset-distance: 100%; font-size: .9em; z-index: 2; }
+    25% { offset-distance: 25%; font-size: 1.15em; z-index: 2; }
+    50% { offset-distance: 50%; font-size: .9em; z-index: 0; }
+    75% { offset-distance: 75%; font-size: .72em; z-index: 0; }
+}
+.status-pill { display: inline-block; max-width: 100%; border: 1px solid #d4af3755; background: #d4af3710; border-radius: 30px; padding: 9px 15px; margin: 0 0 20px; color: var(--gold-bright); font-size: 12px; line-height: 1.5; }
+h1 { margin: 0 0 18px; font-size: clamp(28px, 5vw, 40px); letter-spacing: -.045em; line-height: 1.15; }
+.lead { font-size: 17px; line-height: 1.6; margin: 0 auto 14px; }
+.description { font-size: 14px; line-height: 1.8; color: #c5bdab; margin: 0; }
+.reassurance { font-size: 13px; color: #e7dcbf; margin: 24px 0; overflow-wrap: anywhere; }
+button { font: inherit; font-size: 13px; min-height: 44px; padding: 10px 18px; color: #d6cdb8; border: 1px solid #ffffff26; border-radius: 10px; background: transparent; cursor: pointer; }
+button:hover { border-color: var(--gold); color: var(--gold-bright); }
+button:focus-visible { outline: 2px solid var(--gold-bright); outline-offset: 5px; }
+button span { margin-left: 16px; }
+footer { text-align: center; line-height: 1.8; margin-top: 24px; }
+footer span { color: var(--gold); margin: 0 10px; }
+@media (max-width: 480px) {
+    .waiting-shell { padding: 22px 20px; }
+    .header-caption { font-size: 8px; letter-spacing: .1em; }
+    .waiting-card { padding: 32px 0 8px; }
+    .brand-stage { width: 300px; max-width: 100%; height: 200px; font-size: 30px; }
+    .brand-core { font-size: 56px; }
+    .is-pending .brand-satellite { offset-path: ellipse(100px 55px at 50% 50%); }
+    .lead { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .is-pending .brand-core, .is-pending .brand-satellite { animation: none; color: var(--gold-bright); }
+    .is-pending .brand-satellite { offset-path: none; left: 50%; top: 50%; transform: translate(calc(-50% + 110px), -50%); }
+}
