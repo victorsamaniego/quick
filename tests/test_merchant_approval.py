@@ -33,20 +33,23 @@ class MerchantApprovalTest(FeatureFixture, unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         g.pop('_login_user', None)
         transition = self.client.get(response.location)
-        self.assertIn('href="/merchant/status"', transition.text)
-        self.assertIn('PERFIL EN ESPERA DE APROBACIÓN', self.client.get('/merchant/status').text)
+        self.assertTrue(response.location.endswith('/merchant/status'))
+        self.assertEqual(transition.status_code, 200)
+        with self.client.session_transaction() as session:
+            self.assertEqual(session['_user_id'], str(user.id))
+        self.assertIn('Perfil en proceso', self.client.get('/merchant/status').text)
 
     def test_pending_all_operational_get_routes_blocked(self):
         self.pending()
         self.login_as(self.seller)
         for path in ('/admin/', '/admin/products', '/admin/orders', '/admin/inventory',
-                     '/admin/cash-register', '/soporte', '/activate-subscription', '/account/settings'):
+                     '/admin/cash-register', '/dashboard', '/admin/stats', '/soporte', '/activate-subscription', '/account/settings'):
             with self.subTest(path=path):
                 response = self.client.get(path)
                 self.assertEqual(response.status_code, 302)
                 self.assertTrue(response.location.endswith('/merchant/status'))
         page = self.client.get('/merchant/status').text
-        self.assertIn('PERFIL EN ESPERA DE APROBACIÓN', page)
+        self.assertIn('Perfil en proceso', page)
         self.assertNotIn('href="/admin/', page)
         self.assertNotIn('js/main.js', page)
         for path in ('/admin/products/new', '/admin/business/coverage', '/api/update-user-location'):
@@ -149,3 +152,63 @@ class MerchantApprovalTest(FeatureFixture, unittest.TestCase):
             self.assertFalse(allowed_room(self.seller, f'user_{self.seller.id}'))
             client = socketio.test_client(self.app, flask_test_client=self.client)
             self.assertFalse(client.is_connected())
+
+    def test_waiting_page_is_exclusive_and_not_cached(self):
+        self.pending()
+        self.login_as(self.seller)
+        response = self.client.get('/merchant/status')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('no-store', response.headers['Cache-Control'])
+        for text in ('Perfil en proceso', 'pendiente de aprobación', 'Super Admin',
+                     'No necesitás volver a registrarte.', 'Cerrar sesión'):
+            self.assertIn(text, response.text)
+        for text in ('<nav', 'js/main.js', 'socket.io', 'web_push.js', 'notifications.js'):
+            self.assertNotIn(text, response.text)
+        self.assertTrue(self.client.get('/login').location.endswith('/merchant/status'))
+        self.assertEqual(self.client.post('/logout').status_code, 400)
+
+    def test_existing_session_leaves_waiting_page_after_approval(self):
+        self.pending()
+        self.login_as(self.seller)
+        merchant_client = self.client
+        self.assertEqual(merchant_client.get('/merchant/status').status_code, 200)
+        self.client = self.app.test_client()
+        self.login_as(self.admin)
+        self.assertEqual(self.decision().status_code, 302)
+        g.pop('_login_user', None)
+        response = merchant_client.get('/merchant/status', follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.request.path, '/admin/')
+        self.assertNotIn('Perfil en proceso', response.text)
+
+    def test_requests_identify_merchant_not_placeholder_business(self):
+        self.pending()
+        self.business.name = 'Pendiente - Usuario'
+        db.session.commit()
+        self.login_as(self.admin)
+        for path in ('/super-admin/merchant-requests',
+                     f'/super-admin/merchant-requests/{self.business.id}'):
+            page = self.client.get(path)
+            self.assertEqual(page.status_code, 200)
+            self.assertIn('COMERCIANTE', page.text)
+            self.assertIn('Tipo de solicitud', page.text)
+            self.assertNotIn('Pendiente - Usuario', page.text)
+            for value in (self.seller.username, self.seller.email, self.seller.phone):
+                self.assertIn(value, page.text)
+
+    def test_socket_budget_rechecks_existing_connection(self):
+        from socket_security import socket_budget
+        self.login_as(self.seller)
+        calls = []
+        @socket_budget('waiting-test', 10)
+        def operation():
+            calls.append(True)
+            return {'success': True}
+        with self.app.test_request_context('/'):
+            from flask_login import login_user
+            login_user(self.seller)
+            for status in ('pending', 'rejected'):
+                self.business.approval_status = status
+                db.session.commit()
+                self.assertEqual(operation(), {'success': False})
+            self.assertEqual(calls, [])
